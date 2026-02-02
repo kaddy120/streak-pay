@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(gradle wrapper:*)",
+      "Bash(./setup-gradle-wrapper.sh)",
+      "Bash(bash:*)",
+      "Bash(tee:*)",
+      "Bash(java -version:*)",
+      "Bash(source ~/.sdkman/bin/sdkman-init.sh)",
+      "Bash(sdk use java:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(sdk list:*)"
+    ]
+  }
+}

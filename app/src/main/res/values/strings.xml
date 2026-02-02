@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Work Points Tracker</string>
+    <string name="home">Home</string>
+    <string name="wish">Wish</string>
+    <string name="history">History</string>
+    <string name="about">About</string>
+    <string name="start">Start</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="stop">Stop</string>
+    <string name="current_session">Current Session</string>
+    <string name="recent_sessions">Recent Sessions</string>
+    <string name="points">Points</string>
+    <string name="streak">Streak</string>
+    <string name="timer_notification_channel_name">Work Timer</string>
+    <string name="timer_notification_channel_description">Shows work session timer</string>
+</resources>
