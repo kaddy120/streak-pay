@@ -12,7 +12,7 @@ import com.workpointstracker.data.model.WishItem
 
 @Database(
     entities = [Session::class, WishItem::class, DailyGoal::class, AppSettings::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,7 +32,9 @@ abstract class WorkPointsDatabase : RoomDatabase() {
                     context.applicationContext,
                     WorkPointsDatabase::class.java,
                     "work_points_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

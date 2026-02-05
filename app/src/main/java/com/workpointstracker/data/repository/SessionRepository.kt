@@ -30,4 +30,14 @@ class SessionRepository(private val sessionDao: SessionDao) {
     suspend fun getTotalMinutesForDateAndType(date: LocalDate, sessionType: String): Long {
         return sessionDao.getTotalMinutesForDateAndType(date.toString(), sessionType) ?: 0L
     }
+
+    suspend fun deleteSession(session: Session) = sessionDao.delete(session)
+
+    suspend fun getCompletedSessionsForDate(date: LocalDate): List<Session> {
+        return sessionDao.getCompletedSessionsForDate(date.toString())
+    }
+
+    suspend fun getTotalQualifyingMinutesForDate(date: LocalDate): Long {
+        return sessionDao.getTotalQualifyingMinutesForDate(date.toString())
+    }
 }

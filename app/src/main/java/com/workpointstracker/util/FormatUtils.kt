@@ -5,6 +5,23 @@ import java.time.format.DateTimeFormatter
 
 object FormatUtils {
 
+    // Currency to points conversion rate
+    // 1 point = 9.5 currency units
+    const val CURRENCY_TO_POINTS_RATE = 9.5
+
+    fun priceToPoints(price: Double): Double {
+        return price / CURRENCY_TO_POINTS_RATE
+    }
+
+    fun formatPriceAsPoints(price: Double): String {
+        val points = priceToPoints(price)
+        return String.format("%.1f pts", points)
+    }
+
+    fun formatPrice(price: Double): String {
+        return String.format("R%.2f", price)
+    }
+
     fun formatElapsedTime(seconds: Long): String {
         val hours = seconds / 3600
         val minutes = (seconds % 3600) / 60

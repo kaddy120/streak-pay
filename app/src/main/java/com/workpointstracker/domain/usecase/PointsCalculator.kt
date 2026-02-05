@@ -16,7 +16,7 @@ class PointsCalculator {
         private val EARLY_MORNING_START = LocalTime.of(5, 0)
         private val EARLY_MORNING_END = LocalTime.of(8, 0)
         private val DAY_JOB_START = LocalTime.of(9, 0)
-        private val DAY_JOB_END = LocalTime.of(15, 0)
+        private val DAY_JOB_END = LocalTime.of(16, 0)
     }
 
     fun calculatePoints(
@@ -55,7 +55,7 @@ class PointsCalculator {
         )
     }
 
-    private fun determineSessionType(startTime: LocalDateTime): SessionType {
+    fun determineSessionType(startTime: LocalDateTime): SessionType {
         val time = startTime.toLocalTime()
         val dayOfWeek = startTime.dayOfWeek
 

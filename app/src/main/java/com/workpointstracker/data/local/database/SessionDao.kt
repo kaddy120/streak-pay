@@ -52,4 +52,20 @@ interface SessionDao {
         AND type = :sessionType
     """)
     suspend fun getTotalMinutesForDateAndType(date: String, sessionType: String): Long?
+
+    @Query("""
+        SELECT * FROM sessions
+        WHERE endTime IS NOT NULL
+        AND date(startTime) = :date
+        ORDER BY startTime ASC
+    """)
+    suspend fun getCompletedSessionsForDate(date: String): List<Session>
+
+    @Query("""
+        SELECT COALESCE(SUM(durationMinutes), 0) FROM sessions
+        WHERE endTime IS NOT NULL
+        AND date(startTime) = :date
+        AND (type = 'SIDE_WORK' OR type = 'EARLY_MORNING')
+    """)
+    suspend fun getTotalQualifyingMinutesForDate(date: String): Long
 }

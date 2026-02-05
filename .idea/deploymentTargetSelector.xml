@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-02-02T00:23:58.663856070Z">
+        <DropdownSelection timestamp="2026-02-04T17:29:44.764794381Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="PhysicalDevice" identifier="serial=RF8W70PBV8P" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=/home/kamarindi/.android/avd/Medium_Phone.avd" />
             </handle>
           </Target>
         </DropdownSelection>

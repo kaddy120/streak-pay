@@ -23,11 +23,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.workpointstracker.data.model.WishItem
 import com.workpointstracker.util.FormatUtils
+import com.workpointstracker.util.FormatUtils.priceToPoints
 import com.workpointstracker.util.ImageUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WishScreen(viewModel: WishViewModel = viewModel()) {
+fun WishScreen(
+    viewModel: WishViewModel = viewModel(),
+    onItemClick: (Long) -> Unit = {}
+) {
     val availableItems by viewModel.availableWishItems.collectAsState()
     val redeemedItems by viewModel.redeemedWishItems.collectAsState()
     val totalPoints by viewModel.totalPoints.collectAsState()
@@ -89,13 +93,14 @@ fun WishScreen(viewModel: WishViewModel = viewModel()) {
             0 -> WishItemsGrid(
                 items = availableItems,
                 totalPoints = totalPoints ?: 0.0,
-                onRedeemClick = { viewModel.redeemWishItem(it) },
+                onItemClick = { onItemClick(it.id) },
                 onDeleteClick = { viewModel.deleteWishItem(it) }
             )
             1 -> WishItemsGrid(
                 items = redeemedItems,
                 totalPoints = totalPoints ?: 0.0,
                 isRedeemed = true,
+                onItemClick = { onItemClick(it.id) },
                 onDeleteClick = { viewModel.deleteWishItem(it) }
             )
         }
@@ -117,7 +122,7 @@ fun WishItemsGrid(
     items: List<WishItem>,
     totalPoints: Double,
     isRedeemed: Boolean = false,
-    onRedeemClick: (WishItem) -> Unit = {},
+    onItemClick: (WishItem) -> Unit = {},
     onDeleteClick: (WishItem) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -131,9 +136,9 @@ fun WishItemsGrid(
         items(items) { item ->
             WishItemCard(
                 wishItem = item,
-                canAfford = totalPoints >= item.price,
+                canAfford = totalPoints >= priceToPoints(item.price),
                 isRedeemed = isRedeemed,
-                onRedeemClick = { onRedeemClick(item) },
+                onItemClick = { onItemClick(item) },
                 onDeleteClick = { onDeleteClick(item) },
                 context = context
             )
@@ -147,7 +152,7 @@ fun WishItemCard(
     wishItem: WishItem,
     canAfford: Boolean,
     isRedeemed: Boolean,
-    onRedeemClick: () -> Unit,
+    onItemClick: () -> Unit,
     onDeleteClick: () -> Unit,
     context: android.content.Context
 ) {
@@ -159,7 +164,7 @@ fun WishItemCard(
             .fillMaxWidth()
             .aspectRatio(0.75f),
         shape = RoundedCornerShape(12.dp),
-        onClick = { if (!isRedeemed && canAfford) onRedeemClick() }
+        onClick = onItemClick
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Image
@@ -185,7 +190,7 @@ fun WishItemCard(
                     maxLines = 1
                 )
                 Text(
-                    text = "${wishItem.price.toInt()} pts",
+                    text = FormatUtils.formatPriceAsPoints(wishItem.price),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                     color = if (isRedeemed) MaterialTheme.colorScheme.outline
@@ -228,8 +233,14 @@ fun AddWishItemDialog(
                 OutlinedTextField(
                     value = price,
                     onValueChange = { price = it },
-                    label = { Text("Price (points)") },
-                    modifier = Modifier.fillMaxWidth()
+                    label = { Text("Price (R)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = {
+                        val priceValue = price.toDoubleOrNull()
+                        if (priceValue != null && priceValue > 0) {
+                            Text("= ${FormatUtils.formatPriceAsPoints(priceValue)} required")
+                        }
+                    }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(

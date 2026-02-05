@@ -12,7 +12,9 @@
       "Bash(source ~/.sdkman/bin/sdkman-init.sh)",
       "Bash(sdk use java:*)",
       "Bash(./gradlew clean:*)",
-      "Bash(sdk list:*)"
+      "Bash(sdk list:*)",
+      "Bash(echo:*)",
+      "Bash(source:*)"
     ]
   }
 }

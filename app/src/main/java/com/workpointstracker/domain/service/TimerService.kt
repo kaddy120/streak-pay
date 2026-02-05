@@ -33,6 +33,7 @@ class TimerService : Service() {
     private var startTime: LocalDateTime? = null
     private var pausedTime: LocalDateTime? = null
     private var totalPausedSeconds: Long = 0
+    private var currentSessionId: Long? = null
 
     companion object {
         private const val NOTIFICATION_CHANNEL_ID = "timer_channel"
@@ -106,6 +107,7 @@ class TimerService : Service() {
         _timerState.value = TimerState.Idle
 
         timerJob?.cancel()
+        currentSessionId = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
 
@@ -131,7 +133,24 @@ class TimerService : Service() {
 
     fun getStartTime(): LocalDateTime? = startTime
 
+    fun setStartTime(newStartTime: LocalDateTime) {
+        startTime = newStartTime
+        // Recalculate and update the timer state immediately
+        val elapsed = getCurrentElapsedSeconds()
+        when (_timerState.value) {
+            is TimerState.Running -> _timerState.value = TimerState.Running(elapsed)
+            is TimerState.Paused -> _timerState.value = TimerState.Paused(elapsed)
+            else -> {}
+        }
+    }
+
     fun getTotalPausedSeconds(): Long = totalPausedSeconds
+
+    fun getCurrentSessionId(): Long? = currentSessionId
+
+    fun setCurrentSessionId(sessionId: Long) {
+        currentSessionId = sessionId
+    }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(

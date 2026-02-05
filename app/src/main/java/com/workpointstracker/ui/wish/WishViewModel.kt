@@ -8,6 +8,7 @@ import com.workpointstracker.data.local.database.WorkPointsDatabase
 import com.workpointstracker.data.model.WishItem
 import com.workpointstracker.data.repository.SessionRepository
 import com.workpointstracker.data.repository.WishItemRepository
+import com.workpointstracker.util.FormatUtils
 import com.workpointstracker.util.ImageUtils
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -46,7 +47,8 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
     fun redeemWishItem(wishItem: WishItem) {
         viewModelScope.launch {
             val currentPoints = totalPoints.value ?: 0.0
-            if (currentPoints >= wishItem.price) {
+            val requiredPoints = FormatUtils.priceToPoints(wishItem.price)
+            if (currentPoints >= requiredPoints) {
                 // Update wish item as redeemed
                 val updatedWishItem = wishItem.copy(
                     isRedeemed = true,
