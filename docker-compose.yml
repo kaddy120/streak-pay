@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workpoints-db
+    environment:
+      POSTGRES_DB: workpoints
+      POSTGRES_USER: workpoints
+      POSTGRES_PASSWORD: workpoints
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: workpoints-api
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DB_URL: jdbc:postgresql://postgres:5432/workpoints
+      DB_USERNAME: workpoints
+      DB_PASSWORD: workpoints
+      API_KEY: dev-api-key-change-in-production
+      TZ: Africa/Harare
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:

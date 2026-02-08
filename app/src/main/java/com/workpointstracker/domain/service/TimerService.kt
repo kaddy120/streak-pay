@@ -6,7 +6,9 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.workpointstracker.MainActivity
@@ -73,7 +75,15 @@ class TimerService : Service() {
         totalPausedSeconds = 0
         _timerState.value = TimerState.Running(0)
 
-        startForeground(NOTIFICATION_ID, createNotification("00:00:00"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification("00:00:00"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification("00:00:00"))
+        }
         startTimerJob()
     }
 

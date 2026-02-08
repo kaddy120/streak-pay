@@ -15,7 +15,7 @@ data class Session(
     val type: SessionType,
     val isPaused: Boolean = false,
     val pausedAt: LocalDateTime? = null,
-    val totalPausedMinutes: Long = 0
+    val totalPausedSeconds: Long = 0
 )
 
 enum class SessionType {

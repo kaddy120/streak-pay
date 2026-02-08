@@ -8,9 +8,15 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.workpointstracker.BuildConfig
 import com.workpointstracker.data.local.database.WorkPointsDatabase
 import com.workpointstracker.data.model.Session
 import com.workpointstracker.data.model.WishItem
+import com.workpointstracker.data.remote.ApiClient
+import com.workpointstracker.data.remote.ApiService
+import com.workpointstracker.data.remote.CreateSessionRequest
+import com.workpointstracker.data.remote.SessionResponse
+import com.workpointstracker.data.remote.UpdateSessionRequest
 import com.workpointstracker.data.repository.SessionRepository
 import com.workpointstracker.data.repository.SettingsRepository
 import com.workpointstracker.data.repository.WishItemRepository
@@ -21,6 +27,9 @@ import com.workpointstracker.domain.usecase.PointsCalculator
 import com.workpointstracker.domain.usecase.StreakInfo
 import com.workpointstracker.domain.usecase.StreakManager
 import com.workpointstracker.util.FormatUtils
+import android.util.Log
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +39,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -66,6 +76,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _encouragementData = MutableStateFlow(EncouragementData())
     val encouragementData: StateFlow<EncouragementData> = _encouragementData
 
+    // API sync: tracks the API-assigned ID for the current local session
+    private val _apiSessionId = MutableStateFlow<Long?>(null)
+
+    // Remote session state
+    private val apiService: ApiService by lazy {
+        ApiClient.getService(BuildConfig.API_BASE_URL, BuildConfig.API_KEY)
+    }
+    private val _remoteSession = MutableStateFlow<SessionResponse?>(null)
+    val remoteSession: StateFlow<SessionResponse?> = _remoteSession
+    private val _remoteElapsedSeconds = MutableStateFlow(0L)
+    val remoteElapsedSeconds: StateFlow<Long> = _remoteElapsedSeconds
+    private var remotePollingJob: Job? = null
+    private var remoteTickJob: Job? = null
+
     val totalPoints = sessionRepository.getTotalPoints()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
@@ -101,8 +125,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             _timerElapsedSeconds.value = 0
                             _canStopTimer.value = false
                             _currentSessionId.value = null
+                            startRemotePolling()
                         }
                         is TimerService.TimerState.Running -> {
+                            stopRemotePolling()
                             _timerRunning.value = true
                             _timerPaused.value = false
                             _timerElapsedSeconds.value = state.elapsedSeconds
@@ -116,6 +142,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             updateCanStopTimer(state.elapsedSeconds)
                         }
                         is TimerService.TimerState.Paused -> {
+                            stopRemotePolling()
                             _timerRunning.value = false
                             _timerPaused.value = true
                             _timerElapsedSeconds.value = state.elapsedSeconds
@@ -143,6 +170,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         bindTimerService()
         initializeDefaultSettings()
         refreshEncouragementData()
+        startRemotePolling()
     }
 
     fun syncTimerStartTimeFromDatabase() {
@@ -241,19 +269,40 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             // Set the session ID in the service after it starts
             timerService?.setCurrentSessionId(sessionId)
             _currentSessionId.value = sessionId
+
+            // Sync to API (fire-and-forget)
+            try {
+                val sharedType = com.workpointstracker.shared.models.SessionType.valueOf(sessionType.name)
+                val apiResponse = apiService.createSession(
+                    CreateSessionRequest(deviceId = "android", startTime = startTime, type = sharedType)
+                )
+                _apiSessionId.value = apiResponse.id
+            } catch (_: Exception) { }
         }
     }
 
     fun pauseTimer() {
         timerService?.pauseTimer()
+        val pausedAt = LocalDateTime.now()
         viewModelScope.launch {
             val sessionId = _currentSessionId.value ?: return@launch
             val session = sessionRepository.getSessionById(sessionId) ?: return@launch
             val updatedSession = session.copy(
                 isPaused = true,
-                pausedAt = LocalDateTime.now()
+                pausedAt = pausedAt
             )
             sessionRepository.updateSession(updatedSession)
+
+            // Sync to API (fire-and-forget)
+            val apiId = _apiSessionId.value
+            if (apiId != null) {
+                try {
+                    apiService.updateSession(apiId, UpdateSessionRequest(
+                        isPaused = true,
+                        pausedAt = pausedAt
+                    ))
+                } catch (_: Exception) { }
+            }
         }
     }
 
@@ -263,15 +312,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val sessionId = _currentSessionId.value ?: return@launch
             val session = sessionRepository.getSessionById(sessionId) ?: return@launch
             val pausedAt = session.pausedAt
-            val additionalPausedMinutes = if (pausedAt != null) {
-                java.time.temporal.ChronoUnit.MINUTES.between(pausedAt, LocalDateTime.now())
+            val additionalPausedSeconds = if (pausedAt != null) {
+                ChronoUnit.SECONDS.between(pausedAt, LocalDateTime.now())
             } else 0L
+            val newTotalPausedSeconds = session.totalPausedSeconds + additionalPausedSeconds
             val updatedSession = session.copy(
                 isPaused = false,
                 pausedAt = null,
-                totalPausedMinutes = session.totalPausedMinutes + additionalPausedMinutes
+                totalPausedSeconds = newTotalPausedSeconds
             )
             sessionRepository.updateSession(updatedSession)
+
+            // Sync to API (fire-and-forget)
+            val apiId = _apiSessionId.value
+            if (apiId != null) {
+                try {
+                    apiService.updateSession(apiId, UpdateSessionRequest(
+                        isPaused = false,
+                        totalPausedSeconds = newTotalPausedSeconds
+                    ))
+                } catch (_: Exception) { }
+            }
         }
     }
 
@@ -305,6 +366,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         totalPausedSeconds: Long
     ) {
         val durationMinutes = elapsedSeconds / 60
+        val endTime = LocalDateTime.now()
 
         // Minimum 15 minutes - discard shorter sessions
         if (durationMinutes < 15) {
@@ -312,6 +374,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 sessionRepository.getSessionById(id)?.let { session ->
                     sessionRepository.deleteSession(session)
                 }
+            }
+            // Also delete from API if synced
+            val apiId = _apiSessionId.value
+            _apiSessionId.value = null
+            if (apiId != null) {
+                try { apiService.deleteSession(apiId) } catch (_: Exception) { }
             }
             return
         }
@@ -328,9 +396,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             isFirstSessionOfDay = isFirstSessionOfDay
         )
 
-        val endTime = LocalDateTime.now()
-        val totalPausedMinutes = totalPausedSeconds / 60
-
         if (sessionId != null) {
             // Update existing session
             val existingSession = sessionRepository.getSessionById(sessionId)
@@ -343,7 +408,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     type = calculationResult.sessionType,
                     isPaused = false,
                     pausedAt = null,
-                    totalPausedMinutes = totalPausedMinutes
+                    totalPausedSeconds = totalPausedSeconds
                 )
                 sessionRepository.updateSession(updatedSession)
             }
@@ -356,9 +421,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 pointsEarned = calculationResult.points,
                 type = calculationResult.sessionType,
                 isPaused = false,
-                totalPausedMinutes = totalPausedMinutes
+                totalPausedSeconds = totalPausedSeconds
             )
             sessionRepository.insertSession(session)
+        }
+
+        // Sync end to API (fire-and-forget)
+        val apiId = _apiSessionId.value
+        _apiSessionId.value = null
+        if (apiId != null) {
+            try {
+                apiService.updateSession(apiId, UpdateSessionRequest(
+                    endTime = endTime,
+                    isPaused = false,
+                    durationMinutes = durationMinutes,
+                    totalPausedSeconds = totalPausedSeconds
+                ))
+            } catch (_: Exception) { }
         }
 
         // Check if streak should be updated (only for qualifying sessions)
@@ -381,8 +460,109 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _canStopTimer.value = true
     }
 
+    // Remote session polling and control
+
+    private fun startRemotePolling() {
+        if (remotePollingJob?.isActive == true) return
+        remotePollingJob = viewModelScope.launch {
+            while (true) {
+                try {
+                    val sessions = apiService.getActiveSessions()
+                    Log.d("RemotePoll", "Active sessions: ${sessions.size}, devices: ${sessions.map { it.deviceId }}")
+                    // Filter out this device's own sessions
+                    val active = sessions.firstOrNull { it.deviceId != "android" }
+                    _remoteSession.value = active
+                    if (active != null) {
+                        Log.d("RemotePoll", "Remote session found: id=${active.id}, device=${active.deviceId}, elapsed=${active.activeElapsedSeconds}")
+                        _remoteElapsedSeconds.value = active.activeElapsedSeconds
+                        ensureRemoteTickRunning(active)
+                    } else {
+                        stopRemoteTick()
+                        _remoteElapsedSeconds.value = 0
+                    }
+                } catch (e: Exception) {
+                    Log.e("RemotePoll", "Polling failed: ${e.message}", e)
+                }
+                delay(5000)
+            }
+        }
+    }
+
+    private fun stopRemotePolling() {
+        remotePollingJob?.cancel()
+        remotePollingJob = null
+        stopRemoteTick()
+        _remoteSession.value = null
+        _remoteElapsedSeconds.value = 0
+    }
+
+    private fun ensureRemoteTickRunning(session: SessionResponse) {
+        if (session.isPaused) {
+            stopRemoteTick()
+            return
+        }
+        if (remoteTickJob?.isActive == true) return
+        remoteTickJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                _remoteElapsedSeconds.value += 1
+            }
+        }
+    }
+
+    private fun stopRemoteTick() {
+        remoteTickJob?.cancel()
+        remoteTickJob = null
+    }
+
+    fun pauseRemoteSession() {
+        val session = _remoteSession.value ?: return
+        viewModelScope.launch {
+            try {
+                // Let the API set pausedAt using server time (avoids timezone mismatch)
+                val updated = apiService.updateSession(session.id, UpdateSessionRequest(
+                    isPaused = true
+                ))
+                _remoteSession.value = updated
+                _remoteElapsedSeconds.value = updated.activeElapsedSeconds
+                stopRemoteTick()
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun resumeRemoteSession() {
+        val session = _remoteSession.value ?: return
+        viewModelScope.launch {
+            try {
+                // Let the API compute totalPausedSeconds using server time
+                val updated = apiService.updateSession(session.id, UpdateSessionRequest(
+                    isPaused = false
+                ))
+                _remoteSession.value = updated
+                _remoteElapsedSeconds.value = updated.activeElapsedSeconds
+                ensureRemoteTickRunning(updated)
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun stopRemoteSession() {
+        val session = _remoteSession.value ?: return
+        viewModelScope.launch {
+            try {
+                apiService.updateSession(session.id, UpdateSessionRequest(
+                    endTime = LocalDateTime.now(),
+                    isPaused = false
+                ))
+                _remoteSession.value = null
+                _remoteElapsedSeconds.value = 0
+                stopRemoteTick()
+            } catch (_: Exception) { }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        stopRemotePolling()
         if (serviceBound) {
             getApplication<Application>().unbindService(serviceConnection)
             serviceBound = false

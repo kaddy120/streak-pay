@@ -19,6 +19,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // API config (override via local.properties or build config)
+        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("API_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
+        buildConfigField("String", "API_KEY", "\"${project.findProperty("API_KEY") ?: "dev-api-key-change-in-production"}\"")
     }
 
     buildTypes {
@@ -39,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -51,6 +56,9 @@ android {
 }
 
 dependencies {
+    // Shared module
+    implementation(project(":shared"))
+
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
@@ -84,6 +92,14 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Retrofit for REST API
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-jackson:2.9.0")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.1")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.16.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

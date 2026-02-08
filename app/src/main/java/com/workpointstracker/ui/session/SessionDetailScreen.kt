@@ -18,9 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.workpointstracker.BuildConfig
 import com.workpointstracker.data.local.database.WorkPointsDatabase
 import com.workpointstracker.data.model.Session
 import com.workpointstracker.data.model.SessionType
+import com.workpointstracker.data.remote.ApiClient
+import com.workpointstracker.data.remote.ApiService
+import com.workpointstracker.data.remote.SessionResponse
+import com.workpointstracker.data.remote.UpdateSessionRequest
 import com.workpointstracker.data.repository.SessionRepository
 import com.workpointstracker.data.repository.SettingsRepository
 import com.workpointstracker.domain.usecase.PointsCalculator
@@ -49,6 +54,10 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
     )
     private val pointsCalculator = PointsCalculator()
     private val streakManager = StreakManager(settingsRepository)
+    private val apiService: ApiService by lazy {
+        ApiClient.getService(BuildConfig.API_BASE_URL, BuildConfig.API_KEY)
+    }
+    private var isRemote = false
 
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session
@@ -80,10 +89,19 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    fun loadSession(sessionId: Long) {
+    fun loadSession(sessionId: Long, remote: Boolean = false) {
+        isRemote = remote
         viewModelScope.launch {
             _isLoading.value = true
-            val loadedSession = sessionRepository.getSessionById(sessionId)
+            val loadedSession = if (isRemote) {
+                try {
+                    apiService.getSession(sessionId).toLocalSession()
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                sessionRepository.getSessionById(sessionId)
+            }
             _session.value = loadedSession
             loadedSession?.let {
                 _editedStartTime.value = it.startTime
@@ -93,6 +111,18 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
             _isLoading.value = false
         }
     }
+
+    private fun SessionResponse.toLocalSession() = Session(
+        id = id,
+        startTime = startTime,
+        endTime = endTime,
+        durationMinutes = durationMinutes,
+        pointsEarned = pointsEarned,
+        type = SessionType.valueOf(type.name),
+        isPaused = isPaused,
+        pausedAt = pausedAt,
+        totalPausedSeconds = totalPausedSeconds
+    )
 
     fun updateStartTime(newTime: LocalDateTime) {
         _editedStartTime.value = newTime
@@ -126,7 +156,7 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
 
         // Validation 3: Duration must be >= 15 minutes
         val effectiveEndTime = endTime ?: LocalDateTime.now()
-        val durationMinutes = ChronoUnit.MINUTES.between(startTime, effectiveEndTime) - originalSession.totalPausedMinutes
+        val durationMinutes = (ChronoUnit.SECONDS.between(startTime, effectiveEndTime) - originalSession.totalPausedSeconds) / 60
         if (durationMinutes < 15) {
             _validationError.value = "Duration must be at least 15 minutes"
             _previewPoints.value = null
@@ -144,7 +174,7 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
             val originalSession = _session.value ?: return@launch
 
             val effectiveEndTime = endTime ?: LocalDateTime.now()
-            val durationMinutes = ChronoUnit.MINUTES.between(startTime, effectiveEndTime) - originalSession.totalPausedMinutes
+            val durationMinutes = (ChronoUnit.SECONDS.between(startTime, effectiveEndTime) - originalSession.totalPausedSeconds) / 60
 
             if (durationMinutes < 15) {
                 _previewPoints.value = null
@@ -184,18 +214,30 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
 
             if (_validationError.value != null) return@launch
 
-            val durationMinutes = ChronoUnit.MINUTES.between(startTime, endTime) - originalSession.totalPausedMinutes
+            val durationMinutes = (ChronoUnit.SECONDS.between(startTime, endTime) - originalSession.totalPausedSeconds) / 60
 
-            val updatedSession = originalSession.copy(
-                startTime = startTime,
-                endTime = endTime,
-                durationMinutes = durationMinutes,
-                pointsEarned = previewPts,
-                type = sessionType
-            )
-
-            sessionRepository.updateSession(updatedSession)
-            _saveSuccess.value = true
+            if (isRemote) {
+                try {
+                    apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                        startTime = startTime,
+                        endTime = endTime,
+                        durationMinutes = durationMinutes
+                    ))
+                    _saveSuccess.value = true
+                } catch (e: Exception) {
+                    _validationError.value = "Failed to save: ${e.message}"
+                }
+            } else {
+                val updatedSession = originalSession.copy(
+                    startTime = startTime,
+                    endTime = endTime,
+                    durationMinutes = durationMinutes,
+                    pointsEarned = previewPts,
+                    type = sessionType
+                )
+                sessionRepository.updateSession(updatedSession)
+                _saveSuccess.value = true
+            }
         }
     }
 
@@ -209,47 +251,69 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                 return@launch
             }
 
-            val durationMinutes = ChronoUnit.MINUTES.between(startTime, endTime) - originalSession.totalPausedMinutes
+            val durationMinutes = (ChronoUnit.SECONDS.between(startTime, endTime) - originalSession.totalPausedSeconds) / 60
             if (durationMinutes < 15) {
                 _validationError.value = "Duration must be at least 15 minutes"
                 return@launch
             }
 
-            val today = LocalDate.now()
-            val sessionsToday = sessionRepository.getCompletedSessionsForDate(today)
-            val isFirstSession = sessionsToday.isEmpty() ||
-                sessionsToday.all { it.startTime.isAfter(startTime) }
+            if (isRemote) {
+                try {
+                    apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                        startTime = startTime,
+                        endTime = endTime,
+                        isPaused = false
+                    ))
+                    _saveSuccess.value = true
+                } catch (e: Exception) {
+                    _validationError.value = "Failed to stop: ${e.message}"
+                }
+            } else {
+                val today = LocalDate.now()
+                val sessionsToday = sessionRepository.getCompletedSessionsForDate(today)
+                val isFirstSession = sessionsToday.isEmpty() ||
+                    sessionsToday.all { it.startTime.isAfter(startTime) }
 
-            val currentStreak = streakManager.getCurrentStreak()
-            val sessionType = pointsCalculator.determineSessionType(startTime)
+                val currentStreak = streakManager.getCurrentStreak()
+                val sessionType = pointsCalculator.determineSessionType(startTime)
 
-            val result = pointsCalculator.calculatePoints(
-                startTime = startTime,
-                durationMinutes = durationMinutes,
-                streakDays = currentStreak,
-                isFirstSessionOfDay = isFirstSession && sessionType != SessionType.DAY_JOB
-            )
+                val result = pointsCalculator.calculatePoints(
+                    startTime = startTime,
+                    durationMinutes = durationMinutes,
+                    streakDays = currentStreak,
+                    isFirstSessionOfDay = isFirstSession && sessionType != SessionType.DAY_JOB
+                )
 
-            val updatedSession = originalSession.copy(
-                startTime = startTime,
-                endTime = endTime,
-                durationMinutes = durationMinutes,
-                pointsEarned = result.points,
-                type = result.sessionType,
-                isPaused = false,
-                pausedAt = null
-            )
+                val updatedSession = originalSession.copy(
+                    startTime = startTime,
+                    endTime = endTime,
+                    durationMinutes = durationMinutes,
+                    pointsEarned = result.points,
+                    type = result.sessionType,
+                    isPaused = false,
+                    pausedAt = null
+                )
 
-            sessionRepository.updateSession(updatedSession)
-            _saveSuccess.value = true
+                sessionRepository.updateSession(updatedSession)
+                _saveSuccess.value = true
+            }
         }
     }
 
     fun deleteSession() {
         viewModelScope.launch {
             val session = _session.value ?: return@launch
-            sessionRepository.deleteSession(session)
-            _deleteSuccess.value = true
+            if (isRemote) {
+                try {
+                    apiService.deleteSession(session.id)
+                    _deleteSuccess.value = true
+                } catch (e: Exception) {
+                    _validationError.value = "Failed to delete: ${e.message}"
+                }
+            } else {
+                sessionRepository.deleteSession(session)
+                _deleteSuccess.value = true
+            }
         }
     }
 
@@ -260,10 +324,21 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
 
             // Only save if start time was actually changed
             if (editedStart != originalSession.startTime) {
-                val updatedSession = originalSession.copy(
-                    startTime = editedStart
-                )
-                sessionRepository.updateSession(updatedSession)
+                if (isRemote) {
+                    try {
+                        apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                            startTime = editedStart
+                        ))
+                    } catch (e: Exception) {
+                        _validationError.value = "Failed to save: ${e.message}"
+                        return@launch
+                    }
+                } else {
+                    val updatedSession = originalSession.copy(
+                        startTime = editedStart
+                    )
+                    sessionRepository.updateSession(updatedSession)
+                }
             }
             _resumeReady.value = true
         }
@@ -282,7 +357,7 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
         val startTime = _editedStartTime.value ?: return 0
         val endTime = _editedEndTime.value ?: LocalDateTime.now()
         val session = _session.value ?: return 0
-        return ChronoUnit.MINUTES.between(startTime, endTime) - session.totalPausedMinutes
+        return (ChronoUnit.SECONDS.between(startTime, endTime) - session.totalPausedSeconds) / 60
     }
 }
 
@@ -291,6 +366,7 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
 @Composable
 fun SessionDetailScreen(
     sessionId: Long,
+    isRemote: Boolean = false,
     onBackClick: () -> Unit,
     onResumeSession: () -> Unit,
     viewModel: SessionDetailViewModel = viewModel()
@@ -313,7 +389,7 @@ fun SessionDetailScreen(
     var showEndDatePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(sessionId) {
-        viewModel.loadSession(sessionId)
+        viewModel.loadSession(sessionId, isRemote)
     }
 
     LaunchedEffect(saveSuccess, deleteSuccess) {

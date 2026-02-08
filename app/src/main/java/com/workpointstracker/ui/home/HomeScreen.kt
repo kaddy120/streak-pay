@@ -62,6 +62,7 @@ import com.workpointstracker.util.FormatUtils
 @Composable
 fun HomeScreen(
     onSessionClick: (Long) -> Unit = {},
+    onRemoteSessionClick: (Long) -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -69,6 +70,8 @@ fun HomeScreen(
     val timerRunning by viewModel.timerRunning.collectAsState()
     val timerPaused by viewModel.timerPaused.collectAsState()
     val canStopTimer by viewModel.canStopTimer.collectAsState()
+    val remoteSession by viewModel.remoteSession.collectAsState()
+    val remoteElapsed by viewModel.remoteElapsedSeconds.collectAsState()
     val recentSessions by viewModel.recentSessions.collectAsState()
     val currentSessionId by viewModel.currentSessionId.collectAsState()
     val encouragementData by viewModel.encouragementData.collectAsState()
@@ -121,73 +124,70 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Timer card
-        val isSessionActive = timerRunning || timerPaused
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (isSessionActive && currentSessionId != null) {
-                        Modifier.clickable { onSessionClick(currentSessionId!!) }
-                    } else {
-                        Modifier
-                    }
-                ),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(
+        val isLocalActive = timerRunning || timerPaused
+        val showRemote = !isLocalActive && remoteSession != null
+
+        if (showRemote) {
+            val rs = remoteSession!!
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Current Session",
-                    style = MaterialTheme.typography.titleMedium
+                    .clickable { onRemoteSessionClick(rs.id) },
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
                 )
-
-                if (isSessionActive && currentSessionId != null) {
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Remote Session",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "${rs.deviceId} - ${rs.type.name.replace("_", " ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
                     Text(
                         text = "Tap to edit",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = FormatUtils.formatElapsedTime(timerElapsed),
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 32.sp
-                )
+                    Text(
+                        text = FormatUtils.formatElapsedTime(remoteElapsed),
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp
+                    )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    when {
-                        !timerRunning && !timerPaused -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (rs.isPaused) {
                             Button(
-                                onClick = { viewModel.startTimer() },
+                                onClick = { viewModel.resumeRemoteSession() },
                                 modifier = Modifier.size(56.dp),
                                 shape = CircleShape,
                                 contentPadding = PaddingValues(0.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = "Start",
-                                    modifier = Modifier.size(40.dp)
-                                )
+                                Icon(Icons.Default.PlayArrow, "Resume", Modifier.size(40.dp))
                             }
-                        }
-                        timerRunning -> {
+                        } else {
                             Button(
-                                onClick = { viewModel.pauseTimer() },
+                                onClick = { viewModel.pauseRemoteSession() },
                                 modifier = Modifier.size(56.dp),
                                 shape = CircleShape,
                                 contentPadding = PaddingValues(0.dp),
@@ -196,65 +196,160 @@ fun HomeScreen(
                                     contentColor = Color.White
                                 )
                             ) {
-                                Icon(
-                                    Icons.Default.Pause,
-                                    contentDescription = "Pause",
-                                    modifier = Modifier.size(40.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(20.dp))
-                            Button(
-                                onClick = { viewModel.stopTimer() },
-                                modifier = Modifier.size(56.dp),
-                                shape = CircleShape,
-                                contentPadding = PaddingValues(0.dp),
-                                enabled = canStopTimer,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFE53935),
-                                    contentColor = Color.White,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.Stop,
-                                    contentDescription = "Stop",
-                                    modifier = Modifier.size(40.dp)
-                                )
+                                Icon(Icons.Default.Pause, "Pause", Modifier.size(40.dp))
                             }
                         }
-                        timerPaused -> {
-                            Button(
-                                onClick = { viewModel.resumeTimer() },
-                                modifier = Modifier.size(56.dp),
-                                shape = CircleShape,
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = "Resume",
-                                    modifier = Modifier.size(40.dp)
-                                )
+                        Spacer(modifier = Modifier.width(20.dp))
+                        Button(
+                            onClick = { viewModel.stopRemoteSession() },
+                            modifier = Modifier.size(56.dp),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFE53935),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(Icons.Default.Stop, "Stop", Modifier.size(40.dp))
+                        }
+                    }
+                }
+            }
+        } else {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (isLocalActive && currentSessionId != null) {
+                            Modifier.clickable { onSessionClick(currentSessionId!!) }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Current Session",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    if (isLocalActive && currentSessionId != null) {
+                        Text(
+                            text = "Tap to edit",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = FormatUtils.formatElapsedTime(timerElapsed),
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        when {
+                            !timerRunning && !timerPaused -> {
+                                Button(
+                                    onClick = { viewModel.startTimer() },
+                                    modifier = Modifier.size(56.dp),
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Start",
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
                             }
-                            Spacer(modifier = Modifier.width(20.dp))
-                            Button(
-                                onClick = { viewModel.stopTimer() },
-                                modifier = Modifier.size(56.dp),
-                                shape = CircleShape,
-                                contentPadding = PaddingValues(0.dp),
-                                enabled = canStopTimer,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFE53935),
-                                    contentColor = Color.White,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.Stop,
-                                    contentDescription = "Stop",
-                                    modifier = Modifier.size(40.dp)
-                                )
+                            timerRunning -> {
+                                Button(
+                                    onClick = { viewModel.pauseTimer() },
+                                    modifier = Modifier.size(56.dp),
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFF9800),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.Pause,
+                                        contentDescription = "Pause",
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(20.dp))
+                                Button(
+                                    onClick = { viewModel.stopTimer() },
+                                    modifier = Modifier.size(56.dp),
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp),
+                                    enabled = canStopTimer,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFE53935),
+                                        contentColor = Color.White,
+                                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.Stop,
+                                        contentDescription = "Stop",
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
+                            }
+                            timerPaused -> {
+                                Button(
+                                    onClick = { viewModel.resumeTimer() },
+                                    modifier = Modifier.size(56.dp),
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Resume",
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(20.dp))
+                                Button(
+                                    onClick = { viewModel.stopTimer() },
+                                    modifier = Modifier.size(56.dp),
+                                    shape = CircleShape,
+                                    contentPadding = PaddingValues(0.dp),
+                                    enabled = canStopTimer,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFE53935),
+                                        contentColor = Color.White,
+                                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.Stop,
+                                        contentDescription = "Stop",
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
                             }
                         }
                     }

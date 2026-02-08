@@ -15,3 +15,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Work Points Tracker"
 include(":app")
+include(":shared")
+include(":api")
+include(":pc-client")
