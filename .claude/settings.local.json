@@ -49,7 +49,10 @@
       "Bash(docker volume ls:*)",
       "Bash(docker volume rm:*)",
       "Bash(git -C /home/kamarindi/workspace/learn/streak-pay log --oneline --all)",
-      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay add README.md api/build.gradle.kts api/src/main/kotlin/com/workpointstracker/api/service/SessionService.kt api/src/test/kotlin/com/workpointstracker/api/SessionSyncIntegrationTest.kt app/src/main/java/com/workpointstracker/domain/service/TimerService.kt app/src/main/java/com/workpointstracker/ui/home/HomeViewModel.kt pc-client/src/main/kotlin/com/workpointstracker/pcclient/daemon/Daemon.kt pc-client/src/main/kotlin/com/workpointstracker/pcclient/daemon/SessionManager.kt pc-client/src/main/kotlin/com/workpointstracker/pcclient/web/WebServer.kt pc-client/src/test/kotlin/com/workpointstracker/pcclient/daemon/SessionManagerSseTest.kt pc-client/src/test/kotlin/com/workpointstracker/pcclient/daemon/SessionManagerSyncTest.kt .claude/settings.local.json)"
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay add README.md api/build.gradle.kts api/src/main/kotlin/com/workpointstracker/api/service/SessionService.kt api/src/test/kotlin/com/workpointstracker/api/SessionSyncIntegrationTest.kt app/src/main/java/com/workpointstracker/domain/service/TimerService.kt app/src/main/java/com/workpointstracker/ui/home/HomeViewModel.kt pc-client/src/main/kotlin/com/workpointstracker/pcclient/daemon/Daemon.kt pc-client/src/main/kotlin/com/workpointstracker/pcclient/daemon/SessionManager.kt pc-client/src/main/kotlin/com/workpointstracker/pcclient/web/WebServer.kt pc-client/src/test/kotlin/com/workpointstracker/pcclient/daemon/SessionManagerSseTest.kt pc-client/src/test/kotlin/com/workpointstracker/pcclient/daemon/SessionManagerSyncTest.kt .claude/settings.local.json)",
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay push)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)"
     ]
   }
 }
