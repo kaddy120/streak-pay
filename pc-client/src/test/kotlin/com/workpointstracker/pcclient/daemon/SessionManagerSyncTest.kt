@@ -96,7 +96,7 @@ class SessionManagerSyncTest {
     // ── syncFromApi: Remote Pause ──
 
     @Test
-    fun `syncFromApi pauses daemon when API says paused but daemon is active`() {
+    fun `syncFromApi pauses daemon when API says paused but daemon is active and populates activeElapsedSeconds`() {
         simulateActiveSession(sessionId = 42)
 
         val pausedAt = now.minusMinutes(2)
@@ -107,6 +107,7 @@ class SessionManagerSyncTest {
             isPaused = true,
             pausedAt = pausedAt,
             totalPausedSeconds = 0,
+            activeElapsedSeconds = 1680,
             type = SessionType.SIDE_WORK
         )
 
@@ -114,6 +115,7 @@ class SessionManagerSyncTest {
 
         assertEquals(DaemonState.PAUSED, sessionManager.state)
         assertEquals(pausedAt, sessionManager.pausedSince)
+        assertEquals(1680, sessionManager.activeElapsedSeconds)
     }
 
     @Test
@@ -154,7 +156,7 @@ class SessionManagerSyncTest {
     // ── syncFromApi: Remote Resume ──
 
     @Test
-    fun `syncFromApi resumes daemon when API says running but daemon is paused`() {
+    fun `syncFromApi resumes daemon when API says running but daemon is paused and populates activeElapsedSeconds`() {
         simulatePausedSession(sessionId = 42)
 
         every { apiClient.getSession(42) } returns SessionDto(
@@ -164,6 +166,7 @@ class SessionManagerSyncTest {
             isPaused = false,
             pausedAt = null,
             totalPausedSeconds = 300,
+            activeElapsedSeconds = 1500,
             type = SessionType.SIDE_WORK
         )
 
@@ -172,6 +175,7 @@ class SessionManagerSyncTest {
         assertEquals(DaemonState.ACTIVE, sessionManager.state)
         assertEquals(300, sessionManager.totalPausedSeconds)
         assertNull(sessionManager.pausedSince)
+        assertEquals(1500, sessionManager.activeElapsedSeconds)
     }
 
     // ── syncFromApi: No Change ──
@@ -302,7 +306,7 @@ class SessionManagerSyncTest {
     // ── Sequential Remote Operations ──
 
     @Test
-    fun `full remote lifecycle - pause then resume then stop`() {
+    fun `full remote lifecycle - pause then resume then stop with activeElapsedSeconds`() {
         simulateActiveSession(sessionId = 42)
 
         // Tick 1: remote pause detected
@@ -314,10 +318,12 @@ class SessionManagerSyncTest {
             isPaused = true,
             pausedAt = pausedAt,
             totalPausedSeconds = 0,
+            activeElapsedSeconds = 1500,
             type = SessionType.SIDE_WORK
         )
         sessionManager.tick()
         assertEquals(DaemonState.PAUSED, sessionManager.state)
+        assertEquals(1500, sessionManager.activeElapsedSeconds)
 
         // Tick 2: remote resume detected
         every { apiClient.getSession(42) } returns SessionDto(
@@ -327,11 +333,13 @@ class SessionManagerSyncTest {
             isPaused = false,
             pausedAt = null,
             totalPausedSeconds = 300,
+            activeElapsedSeconds = 1500,
             type = SessionType.SIDE_WORK
         )
         sessionManager.tick()
         assertEquals(DaemonState.ACTIVE, sessionManager.state)
         assertEquals(300, sessionManager.totalPausedSeconds)
+        assertEquals(1500, sessionManager.activeElapsedSeconds)
 
         // Tick 3: remote stop detected
         every { apiClient.getSession(42) } returns SessionDto(
@@ -344,5 +352,6 @@ class SessionManagerSyncTest {
         sessionManager.tick()
         assertEquals(DaemonState.IDLE, sessionManager.state)
         assertNull(sessionManager.currentSessionId)
+        assertEquals(0, sessionManager.activeElapsedSeconds)
     }
 }

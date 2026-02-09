@@ -5,19 +5,26 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.workpointstracker.api.dto.CreateSessionRequest
 import com.workpointstracker.api.dto.SessionResponse
 import com.workpointstracker.api.dto.UpdateSessionRequest
+import com.workpointstracker.api.sse.SseConnectionManager
 import com.workpointstracker.shared.models.SessionType
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.reset
+import org.mockito.Mockito.verify
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.eq
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.mock.mockito.SpyBean
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -26,11 +33,13 @@ class SessionSyncIntegrationTest {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var mapper: ObjectMapper
+    @SpyBean lateinit var sseConnectionManager: SseConnectionManager
 
     private val apiKey = "test-api-key"
 
     @BeforeEach
     fun cleanup() {
+        reset(sseConnectionManager)
         // Delete all sessions via listing then deleting each
         val response = mockMvc.perform(
             get("/api/sessions").header("X-API-Key", apiKey)
@@ -310,6 +319,41 @@ class SessionSyncIntegrationTest {
     }
 
     @Test
+    fun `stop session without durationMinutes lets API compute it`() {
+        val startTime = LocalDateTime.of(2026, 2, 8, 10, 0, 0)
+        val endTime = LocalDateTime.of(2026, 2, 8, 10, 45, 0)
+        val session = createSession("pc-myhost", startTime)
+
+        // Client sends only endTime + isPaused, no durationMinutes
+        val stopped = updateSession(session.id, UpdateSessionRequest(
+            endTime = endTime,
+            isPaused = false
+        ))
+
+        // API should auto-compute: 45 min total - 0 min paused = 45 min
+        assertEquals(45, stopped.durationMinutes)
+        assertEquals(endTime, stopped.endTime)
+        assertFalse(stopped.isPaused)
+    }
+
+    @Test
+    fun `stop session without durationMinutes with paused time lets API compute it`() {
+        val startTime = LocalDateTime.of(2026, 2, 8, 10, 0, 0)
+        val endTime = LocalDateTime.of(2026, 2, 8, 11, 0, 0)
+        val session = createSession("pc-myhost", startTime)
+
+        // Client sends endTime + totalPausedSeconds but no durationMinutes
+        val stopped = updateSession(session.id, UpdateSessionRequest(
+            endTime = endTime,
+            isPaused = false,
+            totalPausedSeconds = 600  // 10 min paused
+        ))
+
+        // API should auto-compute: 60 min total - 10 min paused = 50 min
+        assertEquals(50, stopped.durationMinutes)
+    }
+
+    @Test
     fun `delete session removes it`() {
         val session = createSession("android", LocalDateTime.now())
 
@@ -534,5 +578,159 @@ class SessionSyncIntegrationTest {
         mockMvc.perform(
             get("/api/sessions/active").header("X-API-Key", "wrong-key")
         ).andExpect(status().isUnauthorized)
+    }
+
+    // ── 10. Edit Start Time + Resume (atomic) ──
+
+    @Test
+    fun `edit start time and resume in single request updates all fields and broadcasts resumed state`() {
+        val now = LocalDateTime.now()
+        val session = createSession("android", now.minusMinutes(30))
+
+        // Pause it 10 min ago
+        updateSession(session.id, UpdateSessionRequest(
+            isPaused = true,
+            pausedAt = now.minusMinutes(10)
+        ))
+
+        // Reset spy to only capture the edit+resume broadcast
+        reset(sseConnectionManager)
+
+        // Atomic edit+resume: move start time back to 40 min ago AND resume
+        val newStartTime = now.minusMinutes(40)
+        val updated = updateSession(session.id, UpdateSessionRequest(
+            startTime = newStartTime,
+            isPaused = false
+        ))
+
+        // Assert API response
+        assertFalse(updated.isPaused)
+        assertNull(updated.pausedAt)
+        assertEquals(newStartTime, updated.startTime)
+        // totalPausedSeconds should be auto-computed: ~600s (10 min of pause)
+        assertTrue(updated.totalPausedSeconds in 595..605,
+            "Expected ~600s paused, got ${updated.totalPausedSeconds}")
+        // activeElapsedSeconds = 40min - ~10min paused = ~30min = ~1800s
+        assertTrue(updated.activeElapsedSeconds in 1795..1810,
+            "Expected ~1800s active, got ${updated.activeElapsedSeconds}")
+
+        // Verify SSE broadcast with resumed state
+        verify(sseConnectionManager).broadcast(
+            eq("session.updated"),
+            argThat<Any> { this is SessionResponse && !this.isPaused && this.pausedAt == null }
+        )
+    }
+
+    @Test
+    fun `resume without start time change broadcasts resumed state via SSE`() {
+        val now = LocalDateTime.now()
+        val originalStart = now.minusMinutes(20)
+        val session = createSession("android", originalStart)
+
+        // Pause 5 min ago
+        updateSession(session.id, UpdateSessionRequest(
+            isPaused = true,
+            pausedAt = now.minusMinutes(5)
+        ))
+
+        reset(sseConnectionManager)
+
+        // Resume only, no start time change
+        val resumed = updateSession(session.id, UpdateSessionRequest(
+            isPaused = false
+        ))
+
+        assertFalse(resumed.isPaused)
+        assertNull(resumed.pausedAt)
+        assertTrue(
+            ChronoUnit.SECONDS.between(originalStart, resumed.startTime) == 0L,
+            "startTime should be unchanged but was ${resumed.startTime}"
+        )
+        // Auto-computed paused seconds: ~300s (5 min)
+        assertTrue(resumed.totalPausedSeconds in 295..305,
+            "Expected ~300s paused, got ${resumed.totalPausedSeconds}")
+
+        // Verify SSE broadcast with resumed state
+        verify(sseConnectionManager).broadcast(
+            eq("session.updated"),
+            argThat<Any> { this is SessionResponse && !this.isPaused }
+        )
+    }
+
+    @Test
+    fun `edit start time while paused without resuming keeps session paused`() {
+        val now = LocalDateTime.now()
+        val session = createSession("android", now.minusMinutes(30))
+        val pausedAt = now.minusMinutes(10)
+
+        // Pause it
+        updateSession(session.id, UpdateSessionRequest(
+            isPaused = true,
+            pausedAt = pausedAt
+        ))
+
+        reset(sseConnectionManager)
+
+        // Edit start time only — no isPaused field, should stay paused
+        val newStartTime = now.minusMinutes(40)
+        val updated = updateSession(session.id, UpdateSessionRequest(
+            startTime = newStartTime
+        ))
+
+        assertTrue(updated.isPaused, "Session should still be paused")
+        assertEquals(newStartTime, updated.startTime)
+        assertNotNull(updated.pausedAt)
+
+        // Verify SSE broadcast still shows paused state
+        verify(sseConnectionManager).broadcast(
+            eq("session.updated"),
+            argThat<Any> { this is SessionResponse && this.isPaused }
+        )
+    }
+
+    @Test
+    fun `SSE event after edit+resume contains correct activeElapsedSeconds`() {
+        val now = LocalDateTime.now()
+        val session = createSession("android", now.minusMinutes(20))
+
+        // Pause 5 min ago
+        updateSession(session.id, UpdateSessionRequest(
+            isPaused = true,
+            pausedAt = now.minusMinutes(5)
+        ))
+
+        reset(sseConnectionManager)
+
+        // Edit start time to 25 min ago + resume
+        val newStartTime = now.minusMinutes(25)
+        val updated = updateSession(session.id, UpdateSessionRequest(
+            startTime = newStartTime,
+            isPaused = false
+        ))
+
+        // activeElapsedSeconds = 25min - ~5min paused = ~20min = ~1200s
+        assertTrue(updated.activeElapsedSeconds in 1195..1210,
+            "Expected ~1200s active, got ${updated.activeElapsedSeconds}")
+
+        // GET the session again to confirm persisted state matches
+        val fetched = getSession(session.id)
+        assertFalse(fetched.isPaused)
+        assertNull(fetched.pausedAt)
+        assertTrue(
+            ChronoUnit.SECONDS.between(newStartTime, fetched.startTime) == 0L,
+            "startTime should match but was ${fetched.startTime}"
+        )
+        assertTrue(fetched.activeElapsedSeconds in 1195..1210,
+            "Persisted activeElapsedSeconds expected ~1200s, got ${fetched.activeElapsedSeconds}")
+
+        // Verify SSE broadcast has correct activeElapsedSeconds
+        verify(sseConnectionManager).broadcast(
+            eq("session.updated"),
+            argThat<Any> {
+                this is SessionResponse &&
+                    !this.isPaused &&
+                    this.activeElapsedSeconds in 1195..1210
+            }
+        )
     }
 }

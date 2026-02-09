@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.workpointstracker.pcclient.api.ApiClient
 import com.workpointstracker.pcclient.daemon.Daemon
+import com.workpointstracker.pcclient.daemon.DaemonState
 import io.ktor.http.*
 import io.ktor.serialization.jackson.*
 import io.ktor.server.application.*
@@ -15,8 +16,6 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.slf4j.LoggerFactory
-import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 class WebServer(
     private val port: Int,
@@ -52,21 +51,32 @@ class WebServer(
                     call.respondText(dashboardJs(), ContentType.Application.JavaScript)
                 }
                 get("/api/status") {
-                    val now = LocalDateTime.now()
-                    val elapsedSeconds = daemon.sessionStartTime?.let { start ->
-                        val end = if (daemon.state.name == "PAUSED") {
-                            daemon.pausedSince ?: now
-                        } else {
-                            now
+                    val elapsed = when (daemon.state) {
+                        DaemonState.ACTIVE -> {
+                            daemon.sessionStartTime?.let {
+                                val total = java.time.temporal.ChronoUnit.SECONDS.between(it, java.time.LocalDateTime.now())
+                                (total - daemon.totalPausedSeconds).coerceAtLeast(0)
+                            } ?: 0L
                         }
-                        (ChronoUnit.SECONDS.between(start, end) - daemon.totalPausedSeconds).coerceAtLeast(0)
-                    } ?: 0
-
+                        DaemonState.PAUSED -> {
+                            val start = daemon.sessionStartTime
+                            val paused = daemon.pausedSince
+                            if (start != null && paused != null) {
+                                val total = java.time.temporal.ChronoUnit.SECONDS.between(start, paused)
+                                (total - daemon.totalPausedSeconds).coerceAtLeast(0)
+                            } else {
+                                daemon.activeElapsedSeconds
+                            }
+                        }
+                        DaemonState.IDLE -> 0L
+                    }
                     call.respond(mapOf(
                         "state" to daemon.state.name,
                         "currentApp" to daemon.currentAppName,
                         "sessionId" to daemon.currentSessionId,
-                        "elapsedSeconds" to elapsedSeconds
+                        "elapsedSeconds" to elapsed,
+                        "startTime" to daemon.sessionStartTime?.toString(),
+                        "totalPausedSeconds" to daemon.totalPausedSeconds
                     ))
                 }
                 get("/api/remote-status") {
@@ -369,6 +379,7 @@ header h1 {
     private fun dashboardJs(): String = """
 let localElapsed = 0;
 let isActive = false;
+let lastStartTime = null;
 let timerInterval = null;
 let remoteElapsed = 0;
 let remoteActive = false;
@@ -436,10 +447,22 @@ async function fetchStatus() {
             activeInfo.classList.remove('hidden');
             idleInfo.classList.add('hidden');
             appEl.textContent = data.currentApp || 'Unknown App';
-            localElapsed = data.elapsedSeconds || 0;
             if (!isActive) {
+                if (data.startTime) {
+                    const start = new Date(data.startTime).getTime();
+                    const nowMs = Date.now();
+                    localElapsed = Math.max(0, Math.floor((nowMs - start) / 1000) - (data.totalPausedSeconds || 0));
+                } else {
+                    localElapsed = data.elapsedSeconds || 0;
+                }
+                lastStartTime = data.startTime;
                 isActive = true;
                 startLocalTimer();
+            } else if (data.startTime && data.startTime !== lastStartTime) {
+                const start = new Date(data.startTime).getTime();
+                const nowMs = Date.now();
+                localElapsed = Math.max(0, Math.floor((nowMs - start) / 1000) - (data.totalPausedSeconds || 0));
+                lastStartTime = data.startTime;
             }
         } else if (data.state === 'PAUSED') {
             activeInfo.classList.remove('hidden');

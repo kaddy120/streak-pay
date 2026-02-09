@@ -67,7 +67,7 @@ class SessionManagerSseTest {
     // ── SSE Event Processing ──
 
     @Test
-    fun `SSE pause event pauses active session`() {
+    fun `SSE pause event pauses active session and populates activeElapsedSeconds`() {
         simulateActiveSession(sessionId = 42)
 
         val pausedAt = now.minusMinutes(1)
@@ -78,6 +78,7 @@ class SessionManagerSseTest {
             isPaused = true,
             pausedAt = pausedAt,
             totalPausedSeconds = 0,
+            activeElapsedSeconds = 1740,
             type = SessionType.SIDE_WORK
         )))
 
@@ -85,10 +86,11 @@ class SessionManagerSseTest {
 
         assertEquals(DaemonState.PAUSED, sessionManager.state)
         assertEquals(pausedAt, sessionManager.pausedSince)
+        assertEquals(1740, sessionManager.activeElapsedSeconds)
     }
 
     @Test
-    fun `SSE resume event resumes paused session`() {
+    fun `SSE resume event resumes paused session and populates activeElapsedSeconds`() {
         simulatePausedSession(sessionId = 42)
 
         sseClient.eventQueue.add(SseEvent.SessionUpdated(SessionDto(
@@ -98,6 +100,7 @@ class SessionManagerSseTest {
             isPaused = false,
             pausedAt = null,
             totalPausedSeconds = 300,
+            activeElapsedSeconds = 1500,
             type = SessionType.SIDE_WORK
         )))
 
@@ -106,10 +109,11 @@ class SessionManagerSseTest {
         assertEquals(DaemonState.ACTIVE, sessionManager.state)
         assertEquals(300, sessionManager.totalPausedSeconds)
         assertNull(sessionManager.pausedSince)
+        assertEquals(1500, sessionManager.activeElapsedSeconds)
     }
 
     @Test
-    fun `SSE end event resets to idle`() {
+    fun `SSE end event resets to idle and zeroes activeElapsedSeconds`() {
         simulateActiveSession(sessionId = 42)
 
         sseClient.eventQueue.add(SseEvent.SessionUpdated(SessionDto(
@@ -124,6 +128,7 @@ class SessionManagerSseTest {
 
         assertEquals(DaemonState.IDLE, sessionManager.state)
         assertNull(sessionManager.currentSessionId)
+        assertEquals(0, sessionManager.activeElapsedSeconds)
     }
 
     @Test
@@ -271,7 +276,7 @@ class SessionManagerSseTest {
     // ── Full SSE Lifecycle ──
 
     @Test
-    fun `full SSE lifecycle - pause, resume, stop via events`() {
+    fun `full SSE lifecycle - pause, resume, stop via events with activeElapsedSeconds`() {
         simulateActiveSession(sessionId = 42)
 
         // Tick 1: SSE pause
@@ -282,10 +287,12 @@ class SessionManagerSseTest {
             isPaused = true,
             pausedAt = now.minusMinutes(5),
             totalPausedSeconds = 0,
+            activeElapsedSeconds = 1500,
             type = SessionType.SIDE_WORK
         )))
         sessionManager.tick()
         assertEquals(DaemonState.PAUSED, sessionManager.state)
+        assertEquals(1500, sessionManager.activeElapsedSeconds)
 
         // Tick 2: SSE resume
         sseClient.eventQueue.add(SseEvent.SessionUpdated(SessionDto(
@@ -295,11 +302,13 @@ class SessionManagerSseTest {
             isPaused = false,
             pausedAt = null,
             totalPausedSeconds = 300,
+            activeElapsedSeconds = 1500,
             type = SessionType.SIDE_WORK
         )))
         sessionManager.tick()
         assertEquals(DaemonState.ACTIVE, sessionManager.state)
         assertEquals(300, sessionManager.totalPausedSeconds)
+        assertEquals(1500, sessionManager.activeElapsedSeconds)
 
         // Tick 3: SSE stop
         sseClient.eventQueue.add(SseEvent.SessionUpdated(SessionDto(
@@ -312,6 +321,7 @@ class SessionManagerSseTest {
         sessionManager.tick()
         assertEquals(DaemonState.IDLE, sessionManager.state)
         assertNull(sessionManager.currentSessionId)
+        assertEquals(0, sessionManager.activeElapsedSeconds)
 
         // No API polling should have occurred during any of these ticks
         verify(exactly = 0) { apiClient.getSession(any()) }

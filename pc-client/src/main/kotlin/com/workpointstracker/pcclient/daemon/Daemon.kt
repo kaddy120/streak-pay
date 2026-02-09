@@ -19,9 +19,10 @@ class Daemon(private val config: Config) {
     val state: DaemonState get() = sessionManager.state
     val currentAppName: String? get() = sessionManager.currentAppName
     val currentSessionId: Long? get() = sessionManager.currentSessionId
+    val activeElapsedSeconds: Long get() = sessionManager.activeElapsedSeconds
     val sessionStartTime: java.time.LocalDateTime? get() = sessionManager.sessionStartTime
-    val pausedSince: java.time.LocalDateTime? get() = sessionManager.pausedSince
     val totalPausedSeconds: Long get() = sessionManager.totalPausedSeconds
+    val pausedSince: java.time.LocalDateTime? get() = sessionManager.pausedSince
 
     fun start() {
         if (running.getAndSet(true)) {

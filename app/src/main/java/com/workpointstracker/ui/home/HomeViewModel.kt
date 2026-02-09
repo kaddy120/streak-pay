@@ -25,7 +25,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -178,14 +177,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val sessionId = _apiSessionId.value ?: return@launch
             try {
                 val session = apiService.getSession(sessionId)
-                val serviceStartTime = service.getStartTime() ?: return@launch
-                if (session.startTime != serviceStartTime) {
-                    service.setStartTime(session.startTime)
-                }
-                // Sync pause/resume state from server
-                if (!session.isPaused && _timerPaused.value) {
-                    service.resumeTimer()
-                }
+                val shouldResume = !session.isPaused && _timerPaused.value
+
+                service.syncFromApi(
+                    activeElapsedSeconds = session.activeElapsedSeconds,
+                    shouldResume = shouldResume
+                )
             } catch (_: Exception) { }
         }
     }
@@ -393,30 +390,34 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val apiId = _apiSessionId.value ?: return@launch
             try {
-                apiService.updateSession(apiId, UpdateSessionRequest(
+                val updated = apiService.updateSession(apiId, UpdateSessionRequest(
                     isPaused = true,
                     pausedAt = pausedAt
                 ))
+                timerService?.syncFromApi(
+                    activeElapsedSeconds = updated.activeElapsedSeconds,
+                    shouldResume = false
+                )
             } catch (_: Exception) { }
         }
     }
 
     fun resumeTimer() {
-        timerService?.resumeTimer()
+        timerService?.resumeTimer()  // Resume instantly for responsive UX
         viewModelScope.launch {
             val apiId = _apiSessionId.value ?: return@launch
             try {
-                apiService.updateSession(apiId, UpdateSessionRequest(
-                    isPaused = false
-                ))
+                val updated = apiService.updateSession(apiId, UpdateSessionRequest(isPaused = false))
+                timerService?.syncFromApi(
+                    activeElapsedSeconds = updated.activeElapsedSeconds,
+                    shouldResume = false
+                )
             } catch (_: Exception) { }
         }
     }
 
     fun stopTimer() {
         val service = timerService ?: return
-        val serviceStartTime = service.getStartTime() ?: return
-        val totalPausedSeconds = service.getTotalPausedSeconds()
         service.stopTimer()
 
         viewModelScope.launch {
@@ -428,15 +429,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 .edit().remove("active_session_id").apply()
 
             if (apiId != null) {
-                val now = LocalDateTime.now()
-                val actualElapsedSeconds = ChronoUnit.SECONDS.between(serviceStartTime, now) - totalPausedSeconds
-                val durationMinutes = actualElapsedSeconds / 60
                 try {
                     apiService.updateSession(apiId, UpdateSessionRequest(
-                        endTime = now,
-                        isPaused = false,
-                        durationMinutes = durationMinutes,
-                        totalPausedSeconds = totalPausedSeconds
+                        endTime = LocalDateTime.now(),
+                        isPaused = false
                     ))
                 } catch (e: Exception) {
                     Log.w("HomeVM", "API end session failed", e)

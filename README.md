@@ -266,6 +266,54 @@ IDLE ──── tracked app active + not idle ────► ACTIVE
 ./gradlew :pc-client:shadowJar
 ```
 
+## Deploying
+
+### API (Docker)
+
+Build the boot JAR, rebuild the Docker image, and restart the container:
+
+```bash
+./gradlew :api:bootJar
+docker compose up -d --build api
+```
+
+Verify it's running:
+
+```bash
+docker compose ps
+```
+
+### PC Daemon (systemd)
+
+Build the shadow JAR, copy it to the install location, and restart the service:
+
+```bash
+./gradlew :pc-client:shadowJar
+cp pc-client/build/libs/workpointsd.jar ~/.local/lib/workpointsd.jar
+systemctl --user restart workpointsd
+```
+
+Verify it's running:
+
+```bash
+systemctl --user status workpointsd
+```
+
+View logs:
+
+```bash
+journalctl --user -u workpointsd -f
+```
+
+### Both at once
+
+```bash
+./gradlew :api:bootJar :pc-client:shadowJar
+docker compose up -d --build api
+cp pc-client/build/libs/workpointsd.jar ~/.local/lib/workpointsd.jar
+systemctl --user restart workpointsd
+```
+
 ## Key Rules
 
 - Sessions under 15 minutes are discarded

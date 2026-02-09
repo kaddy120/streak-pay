@@ -38,6 +38,8 @@ class SessionManager(
     private var nonTrackedSince: LocalDateTime? = null
     var totalPausedSeconds: Long = 0
         private set
+    var activeElapsedSeconds: Long = 0
+        private set
 
     fun tick() {
         // Process SSE events or fall back to API polling for remote state changes
@@ -117,6 +119,8 @@ class SessionManager(
             logger.info("Session {} paused remotely, syncing local state", sessionId)
             pausedSince = apiSession.pausedAt ?: LocalDateTime.now()
             totalPausedSeconds = apiSession.totalPausedSeconds
+            activeElapsedSeconds = apiSession.activeElapsedSeconds
+            sessionStartTime = apiSession.startTime
             nonTrackedSince = null
             state = DaemonState.PAUSED
             return true
@@ -124,9 +128,19 @@ class SessionManager(
         if (!apiSession.isPaused && state == DaemonState.PAUSED) {
             logger.info("Session {} resumed remotely, syncing local state", sessionId)
             totalPausedSeconds = apiSession.totalPausedSeconds
+            activeElapsedSeconds = apiSession.activeElapsedSeconds
+            sessionStartTime = apiSession.startTime
             pausedSince = null
             nonTrackedSince = null
             state = DaemonState.ACTIVE
+            return true
+        }
+        // Sync activeElapsedSeconds even when state hasn't changed (e.g. startTime edited remotely)
+        if (apiSession.activeElapsedSeconds != activeElapsedSeconds) {
+            logger.info("Session {} activeElapsedSeconds changed remotely: {} -> {}", sessionId, activeElapsedSeconds, apiSession.activeElapsedSeconds)
+            activeElapsedSeconds = apiSession.activeElapsedSeconds
+            totalPausedSeconds = apiSession.totalPausedSeconds
+            sessionStartTime = apiSession.startTime
             return true
         }
         return false
@@ -207,6 +221,7 @@ class SessionManager(
             currentSessionId = session.id
             currentAppName = appName
             sessionStartTime = now
+            activeElapsedSeconds = session.activeElapsedSeconds
             nonTrackedSince = null
             state = DaemonState.ACTIVE
             logger.info("Session started: id={}", session.id)
@@ -220,6 +235,12 @@ class SessionManager(
         val now = LocalDateTime.now()
 
         logger.info("Pausing session {}: {}", sessionId, reason)
+
+        // Compute elapsed so /api/status returns the correct value immediately
+        sessionStartTime?.let {
+            val totalSeconds = ChronoUnit.SECONDS.between(it, now)
+            activeElapsedSeconds = (totalSeconds - totalPausedSeconds).coerceAtLeast(0)
+        }
 
         apiClient.updateSession(sessionId, mapOf(
             "isPaused" to true,
@@ -254,19 +275,14 @@ class SessionManager(
 
     private fun endSession() {
         val sessionId = currentSessionId ?: return
-        val startTime = sessionStartTime ?: return
         val now = LocalDateTime.now()
-        val totalMinutes = ChronoUnit.MINUTES.between(startTime, now)
-        // Include current pause if ending while paused
+        // Include current pause duration if ending while paused
         val finalPausedSeconds = totalPausedSeconds +
             (pausedSince?.let { ChronoUnit.SECONDS.between(it, now) } ?: 0)
-        val pauseMinutes = finalPausedSeconds / 60
-        val activeMinutes = (totalMinutes - pauseMinutes).coerceAtLeast(0)
 
-        logger.info("Ending session {}: {} active min", sessionId, activeMinutes)
+        logger.info("Ending session {}", sessionId)
         apiClient.updateSession(sessionId, mapOf(
             "endTime" to now.toString(),
-            "durationMinutes" to activeMinutes,
             "totalPausedSeconds" to finalPausedSeconds,
             "isPaused" to false
         ))
@@ -308,6 +324,7 @@ class SessionManager(
         pausedSince = null
         nonTrackedSince = null
         totalPausedSeconds = 0
+        activeElapsedSeconds = 0
     }
 
     fun recoverCrashedSessions() {
@@ -316,10 +333,8 @@ class SessionManager(
             logger.warn("Found {} orphaned sessions from this device, closing them", activeSessions.size)
             val now = LocalDateTime.now()
             for (session in activeSessions) {
-                val minutes = ChronoUnit.MINUTES.between(session.startTime, now)
                 apiClient.updateSession(session.id, mapOf(
                     "endTime" to now.toString(),
-                    "durationMinutes" to minutes,
                     "isPaused" to false
                 ))
             }

@@ -103,6 +103,7 @@ class SessionService(
             // Discard sessions shorter than minimum duration
             if (entity.durationMinutes < PointsCalculator.MIN_SESSION_DURATION_MINUTES) {
                 sessionRepository.deleteById(entity.id)
+                sseConnectionManager.broadcast("session.deleted", mapOf("id" to entity.id))
                 return entity.toResponse()
             }
 
