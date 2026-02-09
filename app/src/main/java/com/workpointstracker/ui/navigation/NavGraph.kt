@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+
 import com.workpointstracker.ui.about.AboutScreen
 import com.workpointstracker.ui.history.HistoryScreen
 import com.workpointstracker.ui.home.HomeScreen
@@ -23,9 +24,6 @@ fun NavGraph(navController: NavHostController) {
             HomeScreen(
                 onSessionClick = { sessionId ->
                     navController.navigate(Screen.SessionDetail.createRoute(sessionId))
-                },
-                onRemoteSessionClick = { sessionId ->
-                    navController.navigate(Screen.SessionDetail.createRoute(sessionId, isRemote = true))
                 }
             )
         }
@@ -49,15 +47,12 @@ fun NavGraph(navController: NavHostController) {
         composable(
             route = Screen.SessionDetail.route,
             arguments = listOf(
-                navArgument("sessionId") { type = NavType.LongType },
-                navArgument("isRemote") { type = NavType.BoolType; defaultValue = false }
+                navArgument("sessionId") { type = NavType.LongType }
             )
         ) { backStackEntry ->
             val sessionId = backStackEntry.arguments?.getLong("sessionId") ?: 0L
-            val isRemote = backStackEntry.arguments?.getBoolean("isRemote") ?: false
             SessionDetailScreen(
                 sessionId = sessionId,
-                isRemote = isRemote,
                 onBackClick = { navController.popBackStack() },
                 onResumeSession = { navController.popBackStack() }
             )
@@ -77,8 +72,8 @@ sealed class Screen(val route: String, val title: String) {
     object WishItemDetail : Screen("wish/{itemId}", "Wish Item") {
         fun createRoute(itemId: Long) = "wish/$itemId"
     }
-    object SessionDetail : Screen("session/{sessionId}?isRemote={isRemote}", "Session Detail") {
-        fun createRoute(sessionId: Long, isRemote: Boolean = false) = "session/$sessionId?isRemote=$isRemote"
+    object SessionDetail : Screen("session/{sessionId}", "Session Detail") {
+        fun createRoute(sessionId: Long) = "session/$sessionId"
     }
     object History : Screen("history", "History")
     object About : Screen("about", "About")

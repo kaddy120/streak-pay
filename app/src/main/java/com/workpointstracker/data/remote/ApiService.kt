@@ -1,6 +1,7 @@
 package com.workpointstracker.data.remote
 
 import com.workpointstracker.shared.models.SessionType
+import okhttp3.MultipartBody
 import retrofit2.http.*
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -93,6 +94,34 @@ data class UpdateWishItemRequest(
     val redeemedDate: LocalDate? = null
 )
 
+data class BadgesResponse(
+    val badges: List<BadgeDto> = emptyList(),
+    val highlightedBadges: List<BadgeDto> = emptyList(),
+    val motivationalMessage: String = ""
+) {
+    data class BadgeDto(
+        val name: String = "",
+        val displayName: String = "",
+        val description: String = "",
+        val icon: String = "",
+        val isPermanent: Boolean = false
+    )
+}
+
+data class DashboardResponse(
+    val totalPoints: Double = 0.0,
+    val streak: StreakResponse = StreakResponse(),
+    val userName: String = "",
+    val recentSessions: List<SessionResponse> = emptyList(),
+    val badges: BadgesResponse = BadgesResponse(),
+    val activeSessions: List<SessionResponse> = emptyList(),
+    val goals: DailyGoalResponse = DailyGoalResponse()
+)
+
+data class ImageUploadResponse(
+    val url: String = ""
+)
+
 interface ApiService {
 
     // Sessions
@@ -153,4 +182,20 @@ interface ApiService {
 
     @DELETE("api/wishlist/{id}")
     suspend fun deleteWishItem(@Path("id") id: Long)
+
+    @GET("api/wishlist/{id}")
+    suspend fun getWishItem(@Path("id") id: Long): WishItemResponse
+
+    // Badges
+    @GET("api/badges")
+    suspend fun getBadges(): BadgesResponse
+
+    // Dashboard
+    @GET("api/dashboard")
+    suspend fun getDashboard(): DashboardResponse
+
+    // Image Upload
+    @Multipart
+    @POST("api/images")
+    suspend fun uploadImage(@Part file: MultipartBody.Part): ImageUploadResponse
 }

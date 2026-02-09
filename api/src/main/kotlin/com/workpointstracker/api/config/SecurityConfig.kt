@@ -21,9 +21,10 @@ class ApiKeyFilter(
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        // Allow H2 console and health checks without auth
+        // Allow H2 console, health checks, and image serving without auth
         val path = request.requestURI
-        if (path.startsWith("/h2-console") || path == "/api/health") {
+        if (path.startsWith("/h2-console") || path == "/api/health" ||
+            (request.method == "GET" && path.startsWith("/api/images/"))) {
             filterChain.doFilter(request, response)
             return
         }

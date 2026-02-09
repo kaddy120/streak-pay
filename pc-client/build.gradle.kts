@@ -24,6 +24,7 @@ dependencies {
 
     // HTTP client
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
 
     // JSON
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.1")

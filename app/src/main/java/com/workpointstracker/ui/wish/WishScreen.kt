@@ -22,9 +22,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.workpointstracker.data.model.WishItem
+import com.workpointstracker.BuildConfig
 import com.workpointstracker.util.FormatUtils
 import com.workpointstracker.util.FormatUtils.priceToPoints
-import com.workpointstracker.util.ImageUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,10 +156,12 @@ fun WishItemCard(
     onDeleteClick: () -> Unit,
     context: android.content.Context
 ) {
-    val imageModel: Any = if (wishItem.imagePath.startsWith("http")) {
-        wishItem.imagePath
-    } else {
-        ImageUtils.getImageFile(context, wishItem.imagePath)
+    val imageModel: Any? = wishItem.imageUrl?.let { url ->
+        if (url.startsWith("/api/")) {
+            BuildConfig.API_BASE_URL.trimEnd('/') + url
+        } else {
+            url
+        }
     }
     var showMenu by remember { mutableStateOf(false) }
 

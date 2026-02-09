@@ -14,7 +14,23 @@
       "Bash(./gradlew clean:*)",
       "Bash(sdk list:*)",
       "Bash(echo:*)",
-      "Bash(source:*)"
+      "Bash(source:*)",
+      "Bash(./gradlew :app:assembleDebug:*)",
+      "Bash(./gradlew test:*)",
+      "Bash(./gradlew:*)",
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay status)",
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay diff --stat)",
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay log --oneline -5)",
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay diff)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nMigrate all data reads from Room-first to API-first with Room fallback\n\nAll ViewModels now fetch points, streak, sessions, goals, and settings\nfrom the API server, falling back to Room when the API is unreachable.\nThis fixes empty/zero data when sessions were created on the PC daemon.\nAlso adds fire-and-forget API sync for session detail write operations.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(grep:*)",
+      "Bash(docker compose down:*)",
+      "Bash(docker compose up:*)",
+      "Bash(systemctl:*)",
+      "Bash(journalctl:*)",
+      "Bash(git push:*)"
     ]
   }
 }

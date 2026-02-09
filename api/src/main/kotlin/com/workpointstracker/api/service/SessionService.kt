@@ -3,8 +3,12 @@ package com.workpointstracker.api.service
 import com.workpointstracker.api.dto.*
 import com.workpointstracker.api.entity.SessionEntity
 import com.workpointstracker.api.repository.SessionRepository
+import com.workpointstracker.api.sse.SseConnectionManager
 import com.workpointstracker.shared.PointsCalculator
 import com.workpointstracker.shared.models.SessionType
+import org.slf4j.LoggerFactory
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -14,9 +18,20 @@ import java.time.temporal.ChronoUnit
 @Service
 class SessionService(
     private val sessionRepository: SessionRepository,
-    private val streakService: StreakService
+    private val streakService: StreakService,
+    private val sseConnectionManager: SseConnectionManager
 ) {
+    private val logger = LoggerFactory.getLogger(SessionService::class.java)
     private val pointsCalculator = PointsCalculator()
+
+    @EventListener(ApplicationReadyEvent::class)
+    @Transactional
+    fun cleanupShortSessions() {
+        val deleted = sessionRepository.deleteShortCompletedSessions()
+        if (deleted > 0) {
+            logger.info("Cleaned up {} sessions with duration < {} min", deleted, PointsCalculator.MIN_SESSION_DURATION_MINUTES)
+        }
+    }
 
     @Transactional
     fun createSession(request: CreateSessionRequest): SessionResponse {
@@ -26,7 +41,9 @@ class SessionService(
             type = request.type
         )
         val saved = sessionRepository.save(entity)
-        return saved.toResponse()
+        val response = saved.toResponse()
+        sseConnectionManager.broadcast("session.created", response)
+        return response
     }
 
     @Transactional
@@ -83,8 +100,14 @@ class SessionService(
             )
             entity.pointsEarned = result.points
 
-            // Update streak if qualifying session (>= 15 min for non-DAY_JOB)
-            if (entity.durationMinutes >= 15) {
+            // Discard sessions shorter than minimum duration
+            if (entity.durationMinutes < PointsCalculator.MIN_SESSION_DURATION_MINUTES) {
+                sessionRepository.deleteById(entity.id)
+                return entity.toResponse()
+            }
+
+            // Update streak if qualifying session (>= MIN_SESSION_DURATION_MINUTES for non-DAY_JOB)
+            if (entity.durationMinutes >= PointsCalculator.MIN_SESSION_DURATION_MINUTES) {
                 val qualifyingMinutes = sessionRepository.getTotalQualifyingMinutesForDate(dayStart, dayEnd) +
                     if (entity.type != SessionType.DAY_JOB) entity.durationMinutes else 0
                 if (qualifyingMinutes >= 60) {
@@ -93,8 +116,21 @@ class SessionService(
             }
         }
 
+        val isEnding = request.endTime != null
         val saved = sessionRepository.save(entity)
-        return saved.toResponse()
+        val response = saved.toResponse()
+        sseConnectionManager.broadcast("session.updated", response)
+
+        if (isEnding) {
+            val totalPoints = sessionRepository.getTotalPoints()
+            val streakInfo = streakService.getStreakInfo()
+            sseConnectionManager.broadcast("stats.updated", mapOf(
+                "totalPoints" to totalPoints,
+                "streak" to streakInfo
+            ))
+        }
+
+        return response
     }
 
     fun getSession(id: Long): SessionResponse {
@@ -120,6 +156,7 @@ class SessionService(
             throw NoSuchElementException("Session not found: $id")
         }
         sessionRepository.deleteById(id)
+        sseConnectionManager.broadcast("session.deleted", mapOf("id" to id))
     }
 
     fun getTodayStats(): TodayStatsResponse {

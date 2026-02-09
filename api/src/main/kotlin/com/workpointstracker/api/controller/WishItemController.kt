@@ -3,6 +3,7 @@ package com.workpointstracker.api.controller
 import com.workpointstracker.api.dto.*
 import com.workpointstracker.api.entity.WishItemEntity
 import com.workpointstracker.api.repository.WishItemRepository
+import com.workpointstracker.api.sse.SseConnectionManager
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -10,7 +11,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/wishlist")
 class WishItemController(
-    private val wishItemRepository: WishItemRepository
+    private val wishItemRepository: WishItemRepository,
+    private val sseConnectionManager: SseConnectionManager
 ) {
     @GetMapping
     fun getWishItems(
@@ -32,7 +34,9 @@ class WishItemController(
             imageUrl = request.imageUrl
         )
         val saved = wishItemRepository.save(entity)
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
+        val response = saved.toResponse()
+        sseConnectionManager.broadcast("wishitem.created", response)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     @PutMapping("/{id}")
@@ -50,7 +54,9 @@ class WishItemController(
         request.redeemedDate?.let { entity.redeemedDate = it }
 
         val saved = wishItemRepository.save(entity)
-        return ResponseEntity.ok(saved.toResponse())
+        val response = saved.toResponse()
+        sseConnectionManager.broadcast("wishitem.updated", response)
+        return ResponseEntity.ok(response)
     }
 
     @DeleteMapping("/{id}")
@@ -59,6 +65,7 @@ class WishItemController(
             throw NoSuchElementException("Wish item not found: $id")
         }
         wishItemRepository.deleteById(id)
+        sseConnectionManager.broadcast("wishitem.deleted", mapOf("id" to id))
         return ResponseEntity.noContent().build()
     }
 

@@ -1,36 +1,21 @@
 package com.workpointstracker.ui.history
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.workpointstracker.data.local.database.WorkPointsDatabase
-import com.workpointstracker.data.model.SessionType
-import com.workpointstracker.data.repository.SessionRepository
-import com.workpointstracker.data.repository.SettingsRepository
-import android.util.Log
-import com.workpointstracker.BuildConfig
+import com.workpointstracker.WorkPointsApplication
 import com.workpointstracker.data.model.Session
-import com.workpointstracker.data.remote.ApiClient
+import com.workpointstracker.data.model.SessionType
 import com.workpointstracker.data.remote.ApiService
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = WorkPointsDatabase.getDatabase(application)
-    private val sessionRepository = SessionRepository(database.sessionDao())
-    private val settingsRepository = SettingsRepository(
-        database.appSettingsDao(),
-        database.dailyGoalDao()
-    )
-    private val apiService: ApiService by lazy {
-        ApiClient.getService(BuildConfig.API_BASE_URL, BuildConfig.API_KEY)
-    }
+    private val apiService: ApiService = (application as WorkPointsApplication).apiService
 
     private val _totalPoints = MutableStateFlow<Double?>(0.0)
     val totalPoints: StateFlow<Double?> = _totalPoints
@@ -53,44 +38,19 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     init {
         loadStats()
         viewModelScope.launch {
-            fetchTotalPoints()
-            fetchStreak()
-            fetchGoals()
-        }
-    }
-
-    private suspend fun fetchTotalPoints() {
-        try {
-            val response = apiService.getTotalPoints()
-            _totalPoints.value = response.totalPoints
-        } catch (e: Exception) {
-            Log.w("HistoryVM", "API points fetch failed, falling back to Room", e)
-            val roomPoints = sessionRepository.getTotalPoints().first()
-            _totalPoints.value = roomPoints
-        }
-    }
-
-    private suspend fun fetchStreak() {
-        try {
-            val response = apiService.getStreakInfo()
-            _currentStreak.value = response.currentStreak
-        } catch (e: Exception) {
-            Log.w("HistoryVM", "API streak fetch failed, falling back to Room", e)
-            val settings = settingsRepository.getAppSettingsOnce()
-            _currentStreak.value = settings?.currentStreak ?: 0
-        }
-    }
-
-    private suspend fun fetchGoals() {
-        try {
-            val response = apiService.getGoals()
-            _dayJobGoalHours.value = response.dayJobHours
-            _sideWorkGoalHours.value = response.sideWorkHours
-        } catch (e: Exception) {
-            Log.w("HistoryVM", "API goals fetch failed, falling back to Room", e)
-            val goal = settingsRepository.getDailyGoalOnce()
-            _dayJobGoalHours.value = goal?.dayJobHours ?: 7.5
-            _sideWorkGoalHours.value = goal?.sideWorkHours ?: 4.0
+            try { _totalPoints.value = apiService.getTotalPoints().totalPoints } catch (e: Exception) {
+                Log.w("HistoryVM", "Points fetch failed", e)
+            }
+            try { _currentStreak.value = apiService.getStreakInfo().currentStreak } catch (e: Exception) {
+                Log.w("HistoryVM", "Streak fetch failed", e)
+            }
+            try {
+                val goals = apiService.getGoals()
+                _dayJobGoalHours.value = goals.dayJobHours
+                _sideWorkGoalHours.value = goals.sideWorkHours
+            } catch (e: Exception) {
+                Log.w("HistoryVM", "Goals fetch failed", e)
+            }
         }
     }
 
@@ -109,8 +69,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 TimePeriod.YEAR -> Pair(today.minusDays(364), today)
             }
 
-            val sessions: List<Session> = try {
-                apiService.getSessions(startDate.toString(), endDate.toString())
+            try {
+                val sessions = apiService.getSessions(startDate.toString(), endDate.toString())
                     .filter { it.endTime != null }
                     .map { resp ->
                         Session(
@@ -125,26 +85,25 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                             totalPausedSeconds = resp.totalPausedSeconds
                         )
                     }
+
+                val dayJobMinutes = sessions
+                    .filter { it.type == SessionType.DAY_JOB }
+                    .sumOf { it.durationMinutes }
+
+                val sideWorkMinutes = sessions
+                    .filter { it.type != SessionType.DAY_JOB }
+                    .sumOf { it.durationMinutes }
+
+                val totalPoints = sessions.sumOf { it.pointsEarned }
+
+                _statsData.value = StatsData(
+                    dayJobHours = dayJobMinutes / 60.0,
+                    sideWorkHours = sideWorkMinutes / 60.0,
+                    totalPoints = totalPoints
+                )
             } catch (e: Exception) {
-                Log.w("HistoryVM", "API sessions fetch failed, falling back to Room", e)
-                sessionRepository.getSessionsInDateRange(startDate, endDate)
+                Log.w("HistoryVM", "Sessions fetch failed", e)
             }
-
-            val dayJobMinutes = sessions
-                .filter { it.type == SessionType.DAY_JOB }
-                .sumOf { it.durationMinutes }
-
-            val sideWorkMinutes = sessions
-                .filter { it.type != SessionType.DAY_JOB }
-                .sumOf { it.durationMinutes }
-
-            val totalPoints = sessions.sumOf { it.pointsEarned }
-
-            _statsData.value = StatsData(
-                dayJobHours = dayJobMinutes / 60.0,
-                sideWorkHours = sideWorkMinutes / 60.0,
-                totalPoints = totalPoints
-            )
         }
     }
 }

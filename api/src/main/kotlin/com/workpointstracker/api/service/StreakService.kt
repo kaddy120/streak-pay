@@ -4,6 +4,7 @@ import com.workpointstracker.api.dto.StreakResponse
 import com.workpointstracker.api.entity.AppSettingsEntity
 import com.workpointstracker.api.repository.AppSettingsRepository
 import com.workpointstracker.shared.SettingsProvider
+import com.workpointstracker.shared.StreakInfo
 import com.workpointstracker.shared.StreakManager
 import com.workpointstracker.shared.models.AppSettings
 import kotlinx.coroutines.runBlocking
@@ -27,7 +28,7 @@ class StreakService(
         }
     }
 
-    private val streakManager = StreakManager(settingsProvider)
+    val streakManager = StreakManager(settingsProvider)
 
     fun getCurrentStreak(): Int = runBlocking {
         streakManager.getCurrentStreak()
@@ -46,6 +47,10 @@ class StreakService(
             streakAtRisk = info.streakAtRisk,
             isUrgent = info.gracePeriod.isUrgent
         )
+    }
+
+    fun getStreakInfoShared(): StreakInfo = runBlocking {
+        streakManager.getStreakInfo()
     }
 
     fun getSettings(): AppSettings {

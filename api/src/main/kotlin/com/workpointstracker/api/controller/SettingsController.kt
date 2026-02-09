@@ -4,6 +4,7 @@ import com.workpointstracker.api.dto.*
 import com.workpointstracker.api.entity.DailyGoalEntity
 import com.workpointstracker.api.repository.DailyGoalRepository
 import com.workpointstracker.api.service.StreakService
+import com.workpointstracker.api.sse.SseConnectionManager
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -11,7 +12,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api")
 class SettingsController(
     private val streakService: StreakService,
-    private val dailyGoalRepository: DailyGoalRepository
+    private val dailyGoalRepository: DailyGoalRepository,
+    private val sseConnectionManager: SseConnectionManager
 ) {
     @GetMapping("/settings")
     fun getSettings(): ResponseEntity<AppSettingsResponse> {
@@ -34,15 +36,19 @@ class SettingsController(
             userName = request.userName ?: current.userName
         )
         streakService.updateSettings(updated)
-        return ResponseEntity.ok(
-            AppSettingsResponse(
-                userName = updated.userName,
-                currentStreak = updated.currentStreak,
-                lastWorkDate = updated.lastWorkDate,
-                lastSessionEndTime = updated.lastSessionEndTime,
-                consecutiveWorkDays = updated.consecutiveWorkDays
-            )
+        val settingsResponse = AppSettingsResponse(
+            userName = updated.userName,
+            currentStreak = updated.currentStreak,
+            lastWorkDate = updated.lastWorkDate,
+            lastSessionEndTime = updated.lastSessionEndTime,
+            consecutiveWorkDays = updated.consecutiveWorkDays
         )
+        val goal = dailyGoalRepository.findById(1L).orElse(DailyGoalEntity())
+        sseConnectionManager.broadcast("settings.updated", mapOf(
+            "settings" to settingsResponse,
+            "goals" to DailyGoalResponse(dayJobHours = goal.dayJobHours, sideWorkHours = goal.sideWorkHours)
+        ))
+        return ResponseEntity.ok(settingsResponse)
     }
 
     @GetMapping("/stats/streak")
@@ -67,11 +73,21 @@ class SettingsController(
         request.dayJobHours?.let { current.dayJobHours = it }
         request.sideWorkHours?.let { current.sideWorkHours = it }
         val saved = dailyGoalRepository.save(current)
-        return ResponseEntity.ok(
-            DailyGoalResponse(
-                dayJobHours = saved.dayJobHours,
-                sideWorkHours = saved.sideWorkHours
-            )
+        val goalResponse = DailyGoalResponse(
+            dayJobHours = saved.dayJobHours,
+            sideWorkHours = saved.sideWorkHours
         )
+        val settings = streakService.getSettings()
+        sseConnectionManager.broadcast("settings.updated", mapOf(
+            "settings" to AppSettingsResponse(
+                userName = settings.userName,
+                currentStreak = settings.currentStreak,
+                lastWorkDate = settings.lastWorkDate,
+                lastSessionEndTime = settings.lastSessionEndTime,
+                consecutiveWorkDays = settings.consecutiveWorkDays
+            ),
+            "goals" to goalResponse
+        ))
+        return ResponseEntity.ok(goalResponse)
     }
 }

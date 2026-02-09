@@ -3,6 +3,7 @@ package com.workpointstracker.api.repository
 import com.workpointstracker.api.entity.SessionEntity
 import com.workpointstracker.shared.models.SessionType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.LocalDateTime
@@ -57,4 +58,8 @@ interface SessionRepository : JpaRepository<SessionEntity, Long> {
 
     @Query("SELECT s FROM SessionEntity s WHERE s.endTime IS NULL")
     fun findAllActive(): List<SessionEntity>
+
+    @Modifying
+    @Query("DELETE FROM SessionEntity s WHERE s.endTime IS NOT NULL AND s.durationMinutes < 15")
+    fun deleteShortCompletedSessions(): Int
 }

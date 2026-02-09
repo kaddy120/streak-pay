@@ -18,7 +18,8 @@ class SessionManager(
     private val config: Config,
     private val apiClient: ApiClient,
     private val windowMonitor: WindowMonitor,
-    private val idleDetector: IdleDetector
+    private val idleDetector: IdleDetector,
+    private val sseClient: SseClient? = null
 ) {
     private val logger = LoggerFactory.getLogger(SessionManager::class.java)
     private val pointsCalculator = PointsCalculator()
@@ -39,8 +40,8 @@ class SessionManager(
         private set
 
     fun tick() {
-        // Sync state from API in case another device changed it
-        val remoteChanged = syncFromApi()
+        // Process SSE events or fall back to API polling for remote state changes
+        val remoteChanged = processRemoteChanges()
 
         // Skip auto-detection if a remote device just changed the state
         if (remoteChanged) return
@@ -59,8 +60,81 @@ class SessionManager(
     }
 
     /**
-     * Checks the API for remote state changes and syncs locally.
-     * Returns true if a remote change was detected (caller should skip auto-detection).
+     * Processes remote state changes via SSE events when connected,
+     * falls back to API polling when SSE is disconnected.
+     */
+    private fun processRemoteChanges(): Boolean {
+        if (sseClient != null && sseClient.isConnected) {
+            return processSseEvents()
+        }
+        return syncFromApi()
+    }
+
+    /**
+     * Drains SSE event queue and applies any relevant session changes.
+     */
+    private fun processSseEvents(): Boolean {
+        val sessionId = currentSessionId ?: run {
+            // Drain queue even if we have no active session
+            while (sseClient?.eventQueue?.poll() != null) { /* discard */ }
+            return false
+        }
+
+        var remoteChanged = false
+        while (true) {
+            val event = sseClient?.eventQueue?.poll() ?: break
+            when (event) {
+                is SseEvent.SessionUpdated -> {
+                    if (event.session.id == sessionId) {
+                        remoteChanged = applyRemoteSession(event.session) || remoteChanged
+                    }
+                }
+                is SseEvent.SessionDeleted -> {
+                    if (event.id == sessionId) {
+                        logger.info("Session {} deleted remotely via SSE", sessionId)
+                        resetState()
+                        remoteChanged = true
+                    }
+                }
+                is SseEvent.Heartbeat -> { /* keepalive */ }
+            }
+        }
+        return remoteChanged
+    }
+
+    /**
+     * Applies a remote session state to the local daemon.
+     * Returns true if state changed.
+     */
+    private fun applyRemoteSession(apiSession: com.workpointstracker.pcclient.api.SessionDto): Boolean {
+        val sessionId = apiSession.id
+        if (apiSession.endTime != null) {
+            logger.info("Session {} ended remotely, resetting local state", sessionId)
+            resetState()
+            return true
+        }
+        if (apiSession.isPaused && state == DaemonState.ACTIVE) {
+            logger.info("Session {} paused remotely, syncing local state", sessionId)
+            pausedSince = apiSession.pausedAt ?: LocalDateTime.now()
+            totalPausedSeconds = apiSession.totalPausedSeconds
+            nonTrackedSince = null
+            state = DaemonState.PAUSED
+            return true
+        }
+        if (!apiSession.isPaused && state == DaemonState.PAUSED) {
+            logger.info("Session {} resumed remotely, syncing local state", sessionId)
+            totalPausedSeconds = apiSession.totalPausedSeconds
+            pausedSince = null
+            nonTrackedSince = null
+            state = DaemonState.ACTIVE
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Fallback: Checks the API for remote state changes via polling.
+     * Used when SSE is disconnected.
      */
     private fun syncFromApi(): Boolean {
         val sessionId = currentSessionId ?: return false
@@ -70,29 +144,7 @@ class SessionManager(
                 resetState()
                 return true
             }
-            if (apiSession.endTime != null) {
-                logger.info("Session {} ended remotely, resetting local state", sessionId)
-                resetState()
-                return true
-            }
-            // Remote pause: API says paused but daemon is active
-            if (apiSession.isPaused && state == DaemonState.ACTIVE) {
-                logger.info("Session {} paused remotely, syncing local state", sessionId)
-                pausedSince = apiSession.pausedAt ?: LocalDateTime.now()
-                totalPausedSeconds = apiSession.totalPausedSeconds
-                nonTrackedSince = null
-                state = DaemonState.PAUSED
-                return true
-            }
-            // Remote resume: API says running but daemon is paused
-            if (!apiSession.isPaused && state == DaemonState.PAUSED) {
-                logger.info("Session {} resumed remotely, syncing local state", sessionId)
-                totalPausedSeconds = apiSession.totalPausedSeconds
-                pausedSince = null
-                nonTrackedSince = null
-                state = DaemonState.ACTIVE
-                return true
-            }
+            return applyRemoteSession(apiSession)
         } catch (e: Exception) {
             logger.debug("API sync check failed: {}", e.message)
         }
@@ -211,18 +263,13 @@ class SessionManager(
         val pauseMinutes = finalPausedSeconds / 60
         val activeMinutes = (totalMinutes - pauseMinutes).coerceAtLeast(0)
 
-        if (activeMinutes < 15) {
-            logger.info("Session {} too short ({} min), discarding", sessionId, activeMinutes)
-            apiClient.deleteSession(sessionId)
-        } else {
-            logger.info("Ending session {}: {} active min", sessionId, activeMinutes)
-            apiClient.updateSession(sessionId, mapOf(
-                "endTime" to now.toString(),
-                "durationMinutes" to activeMinutes,
-                "totalPausedSeconds" to finalPausedSeconds,
-                "isPaused" to false
-            ))
-        }
+        logger.info("Ending session {}: {} active min", sessionId, activeMinutes)
+        apiClient.updateSession(sessionId, mapOf(
+            "endTime" to now.toString(),
+            "durationMinutes" to activeMinutes,
+            "totalPausedSeconds" to finalPausedSeconds,
+            "isPaused" to false
+        ))
 
         resetState()
     }
@@ -270,15 +317,11 @@ class SessionManager(
             val now = LocalDateTime.now()
             for (session in activeSessions) {
                 val minutes = ChronoUnit.MINUTES.between(session.startTime, now)
-                if (minutes < 15) {
-                    apiClient.deleteSession(session.id)
-                } else {
-                    apiClient.updateSession(session.id, mapOf(
-                        "endTime" to now.toString(),
-                        "durationMinutes" to minutes,
-                        "isPaused" to false
-                    ))
-                }
+                apiClient.updateSession(session.id, mapOf(
+                    "endTime" to now.toString(),
+                    "durationMinutes" to minutes,
+                    "isPaused" to false
+                ))
             }
         }
     }

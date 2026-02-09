@@ -2,34 +2,27 @@ package com.workpointstracker.ui.wish
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.workpointstracker.data.local.database.WorkPointsDatabase
+import com.workpointstracker.WorkPointsApplication
 import com.workpointstracker.data.model.WishItem
-import com.workpointstracker.data.repository.SessionRepository
-import com.workpointstracker.data.repository.WishItemRepository
-import com.workpointstracker.util.FormatUtils
-import com.workpointstracker.util.ImageUtils
-import android.util.Log
-import com.workpointstracker.BuildConfig
-import com.workpointstracker.data.remote.ApiClient
 import com.workpointstracker.data.remote.ApiService
 import com.workpointstracker.data.remote.CreateWishItemRequest
 import com.workpointstracker.data.remote.UpdateWishItemRequest
+import com.workpointstracker.util.FormatUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
 
 class WishViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = WorkPointsDatabase.getDatabase(application)
-    private val wishItemRepository = WishItemRepository(database.wishItemDao())
-    private val sessionRepository = SessionRepository(database.sessionDao())
-    private val apiService: ApiService by lazy {
-        ApiClient.getService(BuildConfig.API_BASE_URL, BuildConfig.API_KEY)
-    }
+    private val apiService: ApiService = (application as WorkPointsApplication).apiService
 
     private val _availableWishItems = MutableStateFlow<List<WishItem>>(emptyList())
     val availableWishItems: StateFlow<List<WishItem>> = _availableWishItems
@@ -42,19 +35,8 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            fetchTotalPoints()
+            try { _totalPoints.value = apiService.getTotalPoints().totalPoints } catch (_: Exception) {}
             fetchWishItems()
-        }
-    }
-
-    private suspend fun fetchTotalPoints() {
-        try {
-            val response = apiService.getTotalPoints()
-            _totalPoints.value = response.totalPoints
-        } catch (e: Exception) {
-            Log.w("WishVM", "API points fetch failed, falling back to Room", e)
-            val roomPoints = sessionRepository.getTotalPoints().first()
-            _totalPoints.value = roomPoints
         }
     }
 
@@ -66,7 +48,7 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
                     id = resp.id,
                     name = resp.name,
                     price = resp.price,
-                    imagePath = resp.imageUrl ?: "",
+                    imageUrl = resp.imageUrl,
                     isRedeemed = resp.isRedeemed,
                     redeemedDate = resp.redeemedDate?.atStartOfDay()
                 )
@@ -74,32 +56,44 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
             _availableWishItems.value = items.filter { !it.isRedeemed }
             _redeemedWishItems.value = items.filter { it.isRedeemed }
         } catch (e: Exception) {
-            Log.w("WishVM", "API wish items fetch failed, falling back to Room", e)
-            _availableWishItems.value = wishItemRepository.getAvailableWishItems().first()
-            _redeemedWishItems.value = wishItemRepository.getRedeemedWishItems().first()
+            Log.w("WishVM", "Wish items fetch failed", e)
         }
     }
 
     fun addWishItem(name: String, price: Double, imageUri: Uri) {
         viewModelScope.launch {
-            val imagePath = ImageUtils.saveImageToInternalStorage(getApplication(), imageUri)
-            if (imagePath != null) {
-                val wishItem = WishItem(
+            try {
+                // Upload image first
+                val imageUrl = uploadImage(imageUri)
+
+                apiService.createWishItem(CreateWishItemRequest(
                     name = name,
                     price = price,
-                    imagePath = imagePath
-                )
-                wishItemRepository.insertWishItem(wishItem)
-                // Sync to API (fire-and-forget)
-                try {
-                    apiService.createWishItem(CreateWishItemRequest(
-                        name = name,
-                        price = price,
-                        imageUrl = null
-                    ))
-                } catch (_: Exception) { }
+                    imageUrl = imageUrl
+                ))
                 fetchWishItems()
+            } catch (e: Exception) {
+                Log.e("WishVM", "Failed to add wish item", e)
             }
+        }
+    }
+
+    private suspend fun uploadImage(uri: Uri): String? {
+        return try {
+            val context = getApplication<Application>()
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File.createTempFile("upload_", ".jpg", context.cacheDir)
+            FileOutputStream(tempFile).use { out -> inputStream.copyTo(out) }
+            inputStream.close()
+
+            val requestBody = tempFile.asRequestBody("image/jpeg".toMediaType())
+            val part = MultipartBody.Part.createFormData("file", tempFile.name, requestBody)
+            val response = apiService.uploadImage(part)
+            tempFile.delete()
+            response.url
+        } catch (e: Exception) {
+            Log.w("WishVM", "Image upload failed", e)
+            null
         }
     }
 
@@ -108,32 +102,23 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
             val currentPoints = totalPoints.value ?: 0.0
             val requiredPoints = FormatUtils.priceToPoints(wishItem.price)
             if (currentPoints >= requiredPoints) {
-                val updatedWishItem = wishItem.copy(
-                    isRedeemed = true,
-                    redeemedDate = LocalDateTime.now()
-                )
-                wishItemRepository.updateWishItem(updatedWishItem)
-                // Sync to API (fire-and-forget)
                 try {
                     apiService.updateWishItem(wishItem.id, UpdateWishItemRequest(
                         isRedeemed = true,
                         redeemedDate = java.time.LocalDate.now()
                     ))
+                    fetchWishItems()
                 } catch (_: Exception) { }
-                fetchWishItems()
             }
         }
     }
 
     fun deleteWishItem(wishItem: WishItem) {
         viewModelScope.launch {
-            if (!wishItem.imagePath.startsWith("http")) {
-                ImageUtils.deleteImage(getApplication(), wishItem.imagePath)
-            }
-            wishItemRepository.deleteWishItem(wishItem)
-            // Sync to API (fire-and-forget)
-            try { apiService.deleteWishItem(wishItem.id) } catch (_: Exception) { }
-            fetchWishItems()
+            try {
+                apiService.deleteWishItem(wishItem.id)
+                fetchWishItems()
+            } catch (_: Exception) { }
         }
     }
 }

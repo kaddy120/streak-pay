@@ -11,9 +11,10 @@ class Daemon(private val config: Config) {
     private val running = AtomicBoolean(false)
 
     private val apiClient = ApiClient(config.api.base_url, config.api.api_key)
+    private val sseClient = SseClient(config.api.base_url, config.api.api_key)
     private val windowMonitor = WindowMonitor(config.tracked_apps)
     private val idleDetector = IdleDetector()
-    private val sessionManager = SessionManager(config, apiClient, windowMonitor, idleDetector)
+    private val sessionManager = SessionManager(config, apiClient, windowMonitor, idleDetector, sseClient)
 
     val state: DaemonState get() = sessionManager.state
     val currentAppName: String? get() = sessionManager.currentAppName
@@ -33,6 +34,9 @@ class Daemon(private val config: Config) {
         logger.info("Poll interval: {}s", config.poll_interval_seconds)
         logger.info("Idle timeout: {}s", config.idle_timeout_seconds)
         logger.info("Tracked apps: {}", config.tracked_apps.map { it.name })
+
+        // Connect SSE for real-time remote session updates
+        sseClient.connect()
 
         // Recover any orphaned sessions from previous crash
         sessionManager.recoverCrashedSessions()
@@ -59,6 +63,7 @@ class Daemon(private val config: Config) {
     fun stop() {
         if (!running.getAndSet(false)) return
         logger.info("Stopping daemon...")
+        sseClient.disconnect()
         sessionManager.forceStop()
     }
 

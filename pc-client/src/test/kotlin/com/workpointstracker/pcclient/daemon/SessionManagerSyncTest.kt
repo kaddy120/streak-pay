@@ -289,14 +289,14 @@ class SessionManagerSyncTest {
     }
 
     @Test
-    fun `manualStop ends session via API - short session gets deleted`() {
+    fun `manualStop ends session via API - short session sent to API for discard`() {
         simulateActiveSession(sessionId = 42)
 
         sessionManager.manualStop()
 
         assertEquals(DaemonState.IDLE, sessionManager.state)
-        // Session started moments ago (<15 min), so endSession() discards it
-        verify { apiClient.deleteSession(42) }
+        // Session started moments ago (<15 min), but API handles minimum duration enforcement
+        verify { apiClient.updateSession(42, match { it.containsKey("endTime") }) }
     }
 
     // ── Sequential Remote Operations ──

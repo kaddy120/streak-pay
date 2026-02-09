@@ -8,6 +8,8 @@ import java.time.LocalTime
 class PointsCalculator {
 
     companion object {
+        const val MIN_SESSION_DURATION_MINUTES = 15L
+
         private const val DAY_JOB_RATE = 0.25
         private const val SIDE_WORK_RATE = 1.0
         private const val EARLY_MORNING_RATE = 1.5

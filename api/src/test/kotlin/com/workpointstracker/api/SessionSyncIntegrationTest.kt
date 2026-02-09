@@ -440,7 +440,88 @@ class SessionSyncIntegrationTest {
         assertEquals(0, getActiveSessions().size)
     }
 
-    // ── 8. API Key Security ──
+    // ── 8. Minimum Duration Enforcement ──
+
+    @Test
+    fun `ending session under 15 minutes deletes it`() {
+        val startTime = LocalDateTime.of(2026, 2, 8, 10, 0, 0)
+        val endTime = LocalDateTime.of(2026, 2, 8, 10, 10, 0) // 10 min
+        val session = createSession("android", startTime)
+
+        updateSession(session.id, UpdateSessionRequest(
+            endTime = endTime,
+            isPaused = false
+        ))
+
+        // Session should be gone
+        mockMvc.perform(
+            get("/api/sessions/${session.id}").header("X-API-Key", apiKey)
+        ).andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `ending session at exactly 15 minutes keeps it`() {
+        val startTime = LocalDateTime.of(2026, 2, 8, 10, 0, 0)
+        val endTime = LocalDateTime.of(2026, 2, 8, 10, 15, 0) // exactly 15 min
+        val session = createSession("android", startTime)
+
+        val stopped = updateSession(session.id, UpdateSessionRequest(
+            endTime = endTime,
+            isPaused = false
+        ))
+
+        assertEquals(15, stopped.durationMinutes)
+
+        // Session should still exist
+        val fetched = getSession(session.id)
+        assertEquals(session.id, fetched.id)
+        assertEquals(15, fetched.durationMinutes)
+    }
+
+    @Test
+    fun `paused session with active time below 15 minutes is discarded`() {
+        val startTime = LocalDateTime.of(2026, 2, 8, 10, 0, 0)
+        val endTime = LocalDateTime.of(2026, 2, 8, 10, 30, 0) // 30 min total
+        val session = createSession("android", startTime)
+
+        // 18 min paused = 1080s, so active = 30 - 18 = 12 min
+        updateSession(session.id, UpdateSessionRequest(
+            endTime = endTime,
+            isPaused = false,
+            totalPausedSeconds = 1080
+        ))
+
+        // Session should be gone (12 active min < 15)
+        mockMvc.perform(
+            get("/api/sessions/${session.id}").header("X-API-Key", apiKey)
+        ).andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `recent sessions exclude short sessions`() {
+        // Create a long session that will be kept
+        val longStart = LocalDateTime.of(2026, 2, 8, 9, 0, 0)
+        val longEnd = LocalDateTime.of(2026, 2, 8, 9, 30, 0)
+        val longSession = createSession("android", longStart)
+        updateSession(longSession.id, UpdateSessionRequest(endTime = longEnd, isPaused = false))
+
+        // Create a short session that will be discarded
+        val shortStart = LocalDateTime.of(2026, 2, 8, 10, 0, 0)
+        val shortEnd = LocalDateTime.of(2026, 2, 8, 10, 5, 0)
+        val shortSession = createSession("android", shortStart)
+        updateSession(shortSession.id, UpdateSessionRequest(endTime = shortEnd, isPaused = false))
+
+        // GET /api/sessions should only contain the long session
+        val result = mockMvc.perform(
+            get("/api/sessions").header("X-API-Key", apiKey)
+        ).andExpect(status().isOk).andReturn()
+        val sessions: List<SessionResponse> = mapper.readValue(result.response.contentAsString)
+
+        assertEquals(1, sessions.size)
+        assertEquals(longSession.id, sessions[0].id)
+    }
+
+    // ── 9. API Key Security ──
 
     @Test
     fun `requests without API key are rejected`() {

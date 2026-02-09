@@ -103,3 +103,34 @@ data class WishItemResponse(
     val isRedeemed: Boolean,
     val redeemedDate: LocalDate?
 )
+
+// Badge DTOs
+data class BadgesResponse(
+    val badges: List<BadgeDto>,
+    val highlightedBadges: List<BadgeDto>,
+    val motivationalMessage: String
+) {
+    data class BadgeDto(
+        val name: String,
+        val displayName: String,
+        val description: String,
+        val icon: String,
+        val isPermanent: Boolean
+    )
+}
+
+// Dashboard DTO
+data class DashboardResponse(
+    val totalPoints: Double,
+    val streak: StreakResponse,
+    val userName: String,
+    val recentSessions: List<SessionResponse>,
+    val badges: BadgesResponse,
+    val activeSessions: List<SessionResponse>,
+    val goals: DailyGoalResponse
+)
+
+// Image Upload DTO
+data class ImageUploadResponse(
+    val url: String
+)

@@ -14,5 +14,11 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
 app:
   api-key: test-api-key
+  image-upload-dir: ${java.io.tmpdir}/workpointstracker-test-uploads

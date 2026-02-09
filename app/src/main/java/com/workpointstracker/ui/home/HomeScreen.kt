@@ -53,7 +53,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.workpointstracker.data.model.Session
 import com.workpointstracker.data.model.SessionType
-import com.workpointstracker.domain.usecase.Badge
+import com.workpointstracker.data.remote.BadgesResponse
+import com.workpointstracker.data.remote.StreakResponse
 import com.workpointstracker.ui.theme.DayJobColor
 import com.workpointstracker.ui.theme.EarlyMorningColor
 import com.workpointstracker.ui.theme.SideWorkColor
@@ -62,7 +63,6 @@ import com.workpointstracker.util.FormatUtils
 @Composable
 fun HomeScreen(
     onSessionClick: (Long) -> Unit = {},
-    onRemoteSessionClick: (Long) -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -132,7 +132,7 @@ fun HomeScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onRemoteSessionClick(rs.id) },
+                    .clickable { onSessionClick(rs.id) },
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 colors = CardDefaults.cardColors(
@@ -430,14 +430,12 @@ fun EncouragementCard(
                     // Spacer takes up remaining space
                     Spacer(modifier = Modifier.weight(1f))
                     // Grace period at the end
-                    streakInfo?.gracePeriod?.let { gracePeriod ->
-                        if (gracePeriod.hoursRemaining > 0) {
-                            Text(
-                                text = "Grace: ${gracePeriod.hoursRemaining}h ${gracePeriod.minutesRemaining}m",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                    if (streakInfo != null && streakInfo.gracePeriodHoursRemaining > 0) {
+                        Text(
+                            text = "Grace: ${streakInfo.gracePeriodHoursRemaining}h ${streakInfo.gracePeriodMinutesRemaining}m",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 
@@ -549,92 +547,31 @@ fun EncouragementCard(
 }
 
 // Badge gradient color definitions
-private fun getBadgeGradient(badge: Badge): Brush {
-    return when (badge) {
-        // Fire/Streak badges - Orange to Deep Red
-        Badge.WEEK_STREAK, Badge.MONTH_STREAK -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFF6B35),  // Vibrant Orange
-                Color(0xFFD32F2F)   // Deep Red
-            )
-        )
-        // Early Bird - Soft Pink to Sky Blue (Dawn)
-        Badge.EARLY_BIRD -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFF9A8B),  // Soft Coral Pink
-                Color(0xFF4FC3F7)   // Sky Blue
-            )
-        )
-        // Night Owl - Deep Purple to Indigo
-        Badge.NIGHT_OWL -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFF7C4DFF),  // Deep Purple
-                Color(0xFF303F9F)   // Indigo
-            )
-        )
-        // Weekend Warrior - Crimson to Dark Red
-        Badge.WEEKEND_WARRIOR -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFE53935),  // Crimson
-                Color(0xFF8B0000)   // Dark Red
-            )
-        )
-        // Marathon Runner - Teal to Cyan
-        Badge.MARATHON_RUNNER -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFF00897B),  // Teal
-                Color(0xFF00E5FF)   // Cyan
-            )
-        )
-        // Centurion - Gold to Amber
-        Badge.CENTURION -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFFD700),  // Gold
-                Color(0xFFFF8F00)   // Amber
-            )
-        )
-        // Point Collector - Yellow to Gold
-        Badge.POINT_MASTER_100 -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFFEB3B),  // Yellow
-                Color(0xFFFFD700)   // Gold
-            )
-        )
-        // Point Expert - Gold to Orange (brighter)
-        Badge.POINT_MASTER_500 -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFFD700),  // Gold
-                Color(0xFFFF9800)   // Orange
-            )
-        )
-        // Point Master - Radiant Gold
-        Badge.POINT_MASTER_1000 -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFFE082),  // Light Gold
-                Color(0xFFFF6F00)   // Deep Orange
-            )
-        )
-        // Consistent - Green to Emerald
-        Badge.CONSISTENT -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFF66BB6A),  // Green
-                Color(0xFF00C853)   // Emerald
-            )
-        )
-        // Diversified - Rainbow gradient
-        Badge.DIVERSIFIED -> Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFF6B6B),  // Red
-                Color(0xFFFFE66D),  // Yellow
-                Color(0xFF4ECDC4)   // Teal
-            )
-        )
-    }
+private val badgeGradients = mapOf(
+    "WEEK_STREAK" to listOf(Color(0xFFFF6B35), Color(0xFFD32F2F)),
+    "MONTH_STREAK" to listOf(Color(0xFFFF6B35), Color(0xFFD32F2F)),
+    "EARLY_BIRD" to listOf(Color(0xFFFF9A8B), Color(0xFF4FC3F7)),
+    "NIGHT_OWL" to listOf(Color(0xFF7C4DFF), Color(0xFF303F9F)),
+    "WEEKEND_WARRIOR" to listOf(Color(0xFFE53935), Color(0xFF8B0000)),
+    "MARATHON_RUNNER" to listOf(Color(0xFF00897B), Color(0xFF00E5FF)),
+    "CENTURION" to listOf(Color(0xFFFFD700), Color(0xFFFF8F00)),
+    "POINT_MASTER_100" to listOf(Color(0xFFFFEB3B), Color(0xFFFFD700)),
+    "POINT_MASTER_500" to listOf(Color(0xFFFFD700), Color(0xFFFF9800)),
+    "POINT_MASTER_1000" to listOf(Color(0xFFFFE082), Color(0xFFFF6F00)),
+    "CONSISTENT" to listOf(Color(0xFF66BB6A), Color(0xFF00C853)),
+    "DIVERSIFIED" to listOf(Color(0xFFFF6B6B), Color(0xFFFFE66D), Color(0xFF4ECDC4))
+)
+
+private val defaultGradient = listOf(Color(0xFF9E9E9E), Color(0xFF616161))
+
+private fun getBadgeGradient(badge: BadgesResponse.BadgeDto): Brush {
+    val colors = badgeGradients[badge.name] ?: defaultGradient
+    return Brush.horizontalGradient(colors)
 }
 
 @Composable
 fun BadgeChip(
-    badge: Badge,
+    badge: BadgesResponse.BadgeDto,
     isHighlighted: Boolean
 ) {
     val shape = RoundedCornerShape(16.dp)
