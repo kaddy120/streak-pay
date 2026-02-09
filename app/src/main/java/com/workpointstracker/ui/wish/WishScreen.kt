@@ -156,7 +156,11 @@ fun WishItemCard(
     onDeleteClick: () -> Unit,
     context: android.content.Context
 ) {
-    val imageFile = ImageUtils.getImageFile(context, wishItem.imagePath)
+    val imageModel: Any = if (wishItem.imagePath.startsWith("http")) {
+        wishItem.imagePath
+    } else {
+        ImageUtils.getImageFile(context, wishItem.imagePath)
+    }
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
@@ -169,7 +173,7 @@ fun WishItemCard(
         Column(modifier = Modifier.fillMaxSize()) {
             // Image
             Image(
-                painter = rememberAsyncImagePainter(imageFile),
+                painter = rememberAsyncImagePainter(imageModel),
                 contentDescription = wishItem.name,
                 modifier = Modifier
                     .fillMaxWidth()

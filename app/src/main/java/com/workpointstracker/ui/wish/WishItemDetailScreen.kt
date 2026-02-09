@@ -38,11 +38,10 @@ import android.util.Log
 import com.workpointstracker.BuildConfig
 import com.workpointstracker.data.remote.ApiClient
 import com.workpointstracker.data.remote.ApiService
+import com.workpointstracker.data.remote.UpdateWishItemRequest
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 
@@ -96,7 +95,24 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
 
     fun loadWishItem(itemId: Long) {
         viewModelScope.launch {
+            // Try Room first, fall back to API (item may only exist on server)
             val item = wishItemRepository.getWishItemById(itemId)
+                ?: try {
+                    val resp = apiService.getWishItems().firstOrNull { it.id == itemId }
+                    resp?.let {
+                        WishItem(
+                            id = it.id,
+                            name = it.name,
+                            price = it.price,
+                            imagePath = it.imageUrl ?: "",
+                            isRedeemed = it.isRedeemed,
+                            redeemedDate = it.redeemedDate?.atStartOfDay()
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w("WishDetailVM", "API wish item fetch failed", e)
+                    null
+                }
             _wishItem.value = item
             item?.let {
                 _editedName.value = it.name
@@ -162,6 +178,13 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
             )
 
             wishItemRepository.updateWishItem(updatedItem)
+            // Sync to API (fire-and-forget)
+            try {
+                apiService.updateWishItem(updatedItem.id, UpdateWishItemRequest(
+                    name = updatedItem.name,
+                    price = updatedItem.price
+                ))
+            } catch (_: Exception) { }
             _wishItem.value = updatedItem
             _isEditMode.value = false
             _newImageUri.value = null
@@ -172,8 +195,12 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
     fun deleteWishItem() {
         viewModelScope.launch {
             val item = _wishItem.value ?: return@launch
-            ImageUtils.deleteImage(getApplication(), item.imagePath)
+            if (!item.imagePath.startsWith("http")) {
+                ImageUtils.deleteImage(getApplication(), item.imagePath)
+            }
             wishItemRepository.deleteWishItem(item)
+            // Sync to API (fire-and-forget)
+            try { apiService.deleteWishItem(item.id) } catch (_: Exception) { }
             _deleteSuccess.value = true
         }
     }
@@ -190,6 +217,13 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
                     redeemedDate = LocalDateTime.now()
                 )
                 wishItemRepository.updateWishItem(updatedWishItem)
+                // Sync to API (fire-and-forget)
+                try {
+                    apiService.updateWishItem(item.id, UpdateWishItemRequest(
+                        isRedeemed = true,
+                        redeemedDate = java.time.LocalDate.now()
+                    ))
+                } catch (_: Exception) { }
                 _wishItem.value = updatedWishItem
                 _saveSuccess.value = true
             }
@@ -270,7 +304,11 @@ fun WishItemDetailScreen(
                 if (isEditMode) editedPrice.toDoubleOrNull() ?: item.price else item.price
             )
             val canAfford = (totalPoints ?: 0.0) >= requiredPoints
-            val imageFile = ImageUtils.getImageFile(context, item.imagePath)
+            val imageModel: Any = if (item.imagePath.startsWith("http")) {
+                item.imagePath
+            } else {
+                ImageUtils.getImageFile(context, item.imagePath)
+            }
 
             Column(
                 modifier = Modifier
@@ -292,7 +330,7 @@ fun WishItemDetailScreen(
                 ) {
                     Image(
                         painter = rememberAsyncImagePainter(
-                            model = newImageUri ?: imageFile
+                            model = newImageUri ?: imageModel
                         ),
                         contentDescription = item.name,
                         modifier = Modifier
