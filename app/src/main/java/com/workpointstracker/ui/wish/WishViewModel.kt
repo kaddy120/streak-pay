@@ -10,7 +10,14 @@ import com.workpointstracker.data.repository.SessionRepository
 import com.workpointstracker.data.repository.WishItemRepository
 import com.workpointstracker.util.FormatUtils
 import com.workpointstracker.util.ImageUtils
+import android.util.Log
+import com.workpointstracker.BuildConfig
+import com.workpointstracker.data.remote.ApiClient
+import com.workpointstracker.data.remote.ApiService
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -20,6 +27,9 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
     private val database = WorkPointsDatabase.getDatabase(application)
     private val wishItemRepository = WishItemRepository(database.wishItemDao())
     private val sessionRepository = SessionRepository(database.sessionDao())
+    private val apiService: ApiService by lazy {
+        ApiClient.getService(BuildConfig.API_BASE_URL, BuildConfig.API_KEY)
+    }
 
     val availableWishItems = wishItemRepository.getAvailableWishItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -27,8 +37,23 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
     val redeemedWishItems = wishItemRepository.getRedeemedWishItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val totalPoints = sessionRepository.getTotalPoints()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    private val _totalPoints = MutableStateFlow<Double?>(0.0)
+    val totalPoints: StateFlow<Double?> = _totalPoints
+
+    init {
+        viewModelScope.launch { fetchTotalPoints() }
+    }
+
+    private suspend fun fetchTotalPoints() {
+        try {
+            val response = apiService.getTotalPoints()
+            _totalPoints.value = response.totalPoints
+        } catch (e: Exception) {
+            Log.w("WishVM", "API points fetch failed, falling back to Room", e)
+            val roomPoints = sessionRepository.getTotalPoints().first()
+            _totalPoints.value = roomPoints
+        }
+    }
 
     fun addWishItem(name: String, price: Double, imageUri: Uri) {
         viewModelScope.launch {

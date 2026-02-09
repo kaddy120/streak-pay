@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.workpointstracker.BuildConfig
 import com.workpointstracker.data.local.database.WorkPointsDatabase
 import com.workpointstracker.data.model.Session
+import com.workpointstracker.data.model.SessionType
 import com.workpointstracker.data.model.WishItem
 import com.workpointstracker.data.remote.ApiClient
 import com.workpointstracker.data.remote.ApiService
@@ -90,23 +91,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private var remotePollingJob: Job? = null
     private var remoteTickJob: Job? = null
 
-    val totalPoints = sessionRepository.getTotalPoints()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    private val _totalPoints = MutableStateFlow<Double?>(0.0)
+    val totalPoints: StateFlow<Double?> = _totalPoints
 
-    val recentSessions = sessionRepository.getRecentSessions()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _currentStreak = MutableStateFlow(0)
+
+    private val _recentSessions = MutableStateFlow<List<Session>>(emptyList())
+    val recentSessions: StateFlow<List<Session>> = _recentSessions
+
+    private val _userName = MutableStateFlow("Kaddy")
 
     val appSettings = settingsRepository.getAppSettings()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val uiState = combine(
         totalPoints,
-        appSettings
-    ) { points, settings ->
+        _currentStreak,
+        _userName
+    ) { points, streak, name ->
         HomeUiState(
             totalPoints = points ?: 0.0,
-            currentStreak = settings?.currentStreak ?: 0,
-            userName = settings?.userName ?: "Kaddy"
+            currentStreak = streak,
+            userName = name
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
@@ -171,6 +177,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         initializeDefaultSettings()
         refreshEncouragementData()
         startRemotePolling()
+        viewModelScope.launch {
+            fetchTotalPoints()
+            fetchStreak()
+            fetchSettings()
+            fetchRecentSessions()
+        }
     }
 
     fun syncTimerStartTimeFromDatabase() {
@@ -187,16 +199,99 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private suspend fun fetchTotalPoints() {
+        try {
+            val response = apiService.getTotalPoints()
+            _totalPoints.value = response.totalPoints
+        } catch (e: Exception) {
+            Log.w("HomeVM", "API points fetch failed, falling back to Room", e)
+            val roomPoints = sessionRepository.getTotalPoints().first()
+            _totalPoints.value = roomPoints
+        }
+    }
+
+    private suspend fun fetchStreak() {
+        try {
+            val response = apiService.getStreakInfo()
+            _currentStreak.value = response.currentStreak
+        } catch (e: Exception) {
+            Log.w("HomeVM", "API streak fetch failed, falling back to Room", e)
+            val settings = settingsRepository.getAppSettingsOnce()
+            _currentStreak.value = settings?.currentStreak ?: 0
+        }
+    }
+
+    private suspend fun fetchSettings() {
+        try {
+            val response = apiService.getSettings()
+            _userName.value = response.userName.ifEmpty { "Kaddy" }
+        } catch (e: Exception) {
+            Log.w("HomeVM", "API settings fetch failed, falling back to Room", e)
+            val settings = settingsRepository.getAppSettingsOnce()
+            _userName.value = settings?.userName ?: "Kaddy"
+        }
+    }
+
+    private suspend fun fetchRecentSessions() {
+        try {
+            val responses = apiService.getSessions()
+            val sessions = responses
+                .filter { it.endTime != null }
+                .sortedByDescending { it.startTime }
+                .take(10)
+                .map { resp ->
+                    Session(
+                        id = resp.id,
+                        startTime = resp.startTime,
+                        endTime = resp.endTime,
+                        durationMinutes = resp.durationMinutes,
+                        pointsEarned = resp.pointsEarned,
+                        type = SessionType.valueOf(resp.type.name),
+                        isPaused = resp.isPaused,
+                        pausedAt = resp.pausedAt,
+                        totalPausedSeconds = resp.totalPausedSeconds
+                    )
+                }
+            _recentSessions.value = sessions
+        } catch (e: Exception) {
+            Log.w("HomeVM", "API sessions fetch failed, falling back to Room", e)
+            val roomSessions = sessionRepository.getRecentSessions().first()
+            _recentSessions.value = roomSessions
+        }
+    }
+
     fun refreshEncouragementData() {
         viewModelScope.launch {
             val streakInfo = streakManager.getStreakInfo()
             val points = totalPoints.first() ?: 0.0
-            val allSessions = sessionRepository.getAllCompletedSessions().first()
+
+            // Fetch all completed sessions from API for badge calculation
+            val allSessions = try {
+                apiService.getSessions()
+                    .filter { it.endTime != null }
+                    .map { resp ->
+                        Session(
+                            id = resp.id,
+                            startTime = resp.startTime,
+                            endTime = resp.endTime,
+                            durationMinutes = resp.durationMinutes,
+                            pointsEarned = resp.pointsEarned,
+                            type = SessionType.valueOf(resp.type.name),
+                            isPaused = resp.isPaused,
+                            pausedAt = resp.pausedAt,
+                            totalPausedSeconds = resp.totalPausedSeconds
+                        )
+                    }
+            } catch (e: Exception) {
+                Log.w("HomeVM", "API sessions fetch failed for badges, falling back to Room", e)
+                sessionRepository.getAllCompletedSessions().first()
+            }
+
             val badges = badgeCalculator.calculateEarnedBadges(allSessions, streakInfo.currentStreak, points)
             val highlightedBadges = badgeCalculator.getHighlightedBadges(badges)
             val message = streakManager.getMotivationalMessage(streakInfo, badges)
 
-            // Get next affordable wish item
+            // Get next affordable wish item from Room (wish items are local with device images)
             val availableWishItems = wishItemRepository.getAvailableWishItems().first()
             val nextWishItem = findNextAffordableWishItem(availableWishItems, points)
 
@@ -451,7 +546,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Refresh encouragement data after session completion
+        // Refresh data from API after session completion
+        fetchTotalPoints()
+        fetchStreak()
+        fetchRecentSessions()
         refreshEncouragementData()
     }
 
@@ -556,6 +654,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 _remoteSession.value = null
                 _remoteElapsedSeconds.value = 0
                 stopRemoteTick()
+                fetchTotalPoints()
+                fetchStreak()
+                fetchRecentSessions()
+                refreshEncouragementData()
             } catch (_: Exception) { }
         }
     }

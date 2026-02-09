@@ -100,7 +100,13 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                     null
                 }
             } else {
+                // Try Room first, fall back to API (session may only exist on server)
                 sessionRepository.getSessionById(sessionId)
+                    ?: try {
+                        apiService.getSession(sessionId).toLocalSession()
+                    } catch (e: Exception) {
+                        null
+                    }
             }
             _session.value = loadedSession
             loadedSession?.let {
@@ -236,6 +242,14 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                     type = sessionType
                 )
                 sessionRepository.updateSession(updatedSession)
+                // Sync to API (fire-and-forget)
+                try {
+                    apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                        startTime = startTime,
+                        endTime = endTime,
+                        durationMinutes = durationMinutes
+                    ))
+                } catch (_: Exception) { }
                 _saveSuccess.value = true
             }
         }
@@ -295,6 +309,14 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                 )
 
                 sessionRepository.updateSession(updatedSession)
+                // Sync to API (fire-and-forget)
+                try {
+                    apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                        startTime = startTime,
+                        endTime = endTime,
+                        isPaused = false
+                    ))
+                } catch (_: Exception) { }
                 _saveSuccess.value = true
             }
         }
@@ -312,6 +334,8 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                 }
             } else {
                 sessionRepository.deleteSession(session)
+                // Sync to API (fire-and-forget)
+                try { apiService.deleteSession(session.id) } catch (_: Exception) { }
                 _deleteSuccess.value = true
             }
         }
@@ -338,6 +362,12 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                         startTime = editedStart
                     )
                     sessionRepository.updateSession(updatedSession)
+                    // Sync to API (fire-and-forget)
+                    try {
+                        apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                            startTime = editedStart
+                        ))
+                    } catch (_: Exception) { }
                 }
             }
             _resumeReady.value = true
