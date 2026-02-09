@@ -115,6 +115,29 @@ class ApiClient(
         return get("/api/stats/streak")?.let { mapper.readValue(it, StreakDto::class.java) }
     }
 
+    fun sendHeartbeat(
+        deviceId: String,
+        state: String,
+        currentApp: String?,
+        sessionId: Long?,
+        elapsedSeconds: Long,
+        pausedSeconds: Long
+    ): Boolean {
+        val body = mapper.writeValueAsString(mapOf(
+            "deviceId" to deviceId,
+            "state" to state,
+            "currentApp" to currentApp,
+            "sessionId" to sessionId,
+            "elapsedSeconds" to elapsedSeconds,
+            "pausedSeconds" to pausedSeconds
+        ))
+        return post("/api/devices/heartbeat", body) != null
+    }
+
+    fun removeDeviceStatus(deviceId: String): Boolean {
+        return delete("/api/devices/status/$deviceId")
+    }
+
     private fun get(path: String): String? {
         val request = Request.Builder()
             .url("$baseUrl$path")

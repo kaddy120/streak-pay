@@ -303,6 +303,54 @@ class SessionManagerSyncTest {
         verify { apiClient.updateSession(42, match { it.containsKey("endTime") }) }
     }
 
+    // ── Heartbeat ──
+
+    @Test
+    fun `sendHeartbeat calls API with current state when active`() {
+        simulateActiveSession(sessionId = 42)
+
+        every { apiClient.sendHeartbeat(any(), any(), any(), any(), any(), any()) } returns true
+
+        sessionManager.sendHeartbeat()
+
+        verify {
+            apiClient.sendHeartbeat(
+                any(),
+                eq("ACTIVE"),
+                eq("Manual"),
+                eq(42L),
+                any(),
+                eq(0L)
+            )
+        }
+    }
+
+    @Test
+    fun `sendHeartbeat reports IDLE state when no session`() {
+        every { apiClient.sendHeartbeat(any(), any(), any(), any(), any(), any()) } returns true
+
+        sessionManager.sendHeartbeat()
+
+        verify {
+            apiClient.sendHeartbeat(
+                any(),
+                eq("IDLE"),
+                isNull(),
+                isNull(),
+                eq(0L),
+                eq(0L)
+            )
+        }
+    }
+
+    @Test
+    fun `sendHeartbeat does not throw on API failure`() {
+        every { apiClient.sendHeartbeat(any(), any(), any(), any(), any(), any()) } throws RuntimeException("Network error")
+
+        // Should not throw
+        sessionManager.sendHeartbeat()
+    }
+
     // ── Sequential Remote Operations ──
 
     @Test

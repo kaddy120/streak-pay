@@ -23,7 +23,7 @@ class SessionManager(
 ) {
     private val logger = LoggerFactory.getLogger(SessionManager::class.java)
     private val pointsCalculator = PointsCalculator()
-    private val deviceId = "pc-${getHostname()}"
+    val deviceId = "pc-${getHostname()}"
 
     var state: DaemonState = DaemonState.IDLE
         private set
@@ -74,25 +74,34 @@ class SessionManager(
 
     /**
      * Drains SSE event queue and applies any relevant session changes.
+     * DaemonCommand events are processed regardless of whether there's an active session.
      */
     private fun processSseEvents(): Boolean {
-        val sessionId = currentSessionId ?: run {
-            // Drain queue even if we have no active session
-            while (sseClient?.eventQueue?.poll() != null) { /* discard */ }
-            return false
-        }
-
         var remoteChanged = false
+        val sessionId = currentSessionId
+
         while (true) {
             val event = sseClient?.eventQueue?.poll() ?: break
             when (event) {
+                is SseEvent.DaemonCommand -> {
+                    if (event.deviceId == deviceId) {
+                        logger.info("Received remote command: {}", event.action)
+                        when (event.action) {
+                            "start" -> manualStart()
+                            "pause" -> manualPause()
+                            "resume" -> manualResume()
+                            "stop" -> manualStop()
+                        }
+                        remoteChanged = true
+                    }
+                }
                 is SseEvent.SessionUpdated -> {
-                    if (event.session.id == sessionId) {
+                    if (sessionId != null && event.session.id == sessionId) {
                         remoteChanged = applyRemoteSession(event.session) || remoteChanged
                     }
                 }
                 is SseEvent.SessionDeleted -> {
-                    if (event.id == sessionId) {
+                    if (sessionId != null && event.id == sessionId) {
                         logger.info("Session {} deleted remotely via SSE", sessionId)
                         resetState()
                         remoteChanged = true
@@ -325,6 +334,28 @@ class SessionManager(
         nonTrackedSince = null
         totalPausedSeconds = 0
         activeElapsedSeconds = 0
+    }
+
+    fun sendHeartbeat() {
+        try {
+            val elapsed = computeLocalElapsed()
+            apiClient.sendHeartbeat(deviceId, state.name, currentAppName, currentSessionId, elapsed, totalPausedSeconds)
+        } catch (e: Exception) {
+            logger.debug("Heartbeat failed: {}", e.message)
+        }
+    }
+
+    private fun computeLocalElapsed(): Long {
+        return when (state) {
+            DaemonState.ACTIVE -> {
+                sessionStartTime?.let {
+                    val total = ChronoUnit.SECONDS.between(it, LocalDateTime.now())
+                    (total - totalPausedSeconds).coerceAtLeast(0)
+                } ?: 0L
+            }
+            DaemonState.PAUSED -> activeElapsedSeconds
+            DaemonState.IDLE -> 0L
+        }
     }
 
     fun recoverCrashedSessions() {

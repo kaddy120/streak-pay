@@ -108,6 +108,16 @@ data class BadgesResponse(
     )
 }
 
+data class DeviceStatusResponse(
+    val deviceId: String = "",
+    val state: String = "",
+    val currentApp: String? = null,
+    val sessionId: Long? = null,
+    val elapsedSeconds: Long = 0,
+    val pausedSeconds: Long = 0,
+    val lastHeartbeat: String = ""
+)
+
 data class DashboardResponse(
     val totalPoints: Double = 0.0,
     val streak: StreakResponse = StreakResponse(),
@@ -115,7 +125,8 @@ data class DashboardResponse(
     val recentSessions: List<SessionResponse> = emptyList(),
     val badges: BadgesResponse = BadgesResponse(),
     val activeSessions: List<SessionResponse> = emptyList(),
-    val goals: DailyGoalResponse = DailyGoalResponse()
+    val goals: DailyGoalResponse = DailyGoalResponse(),
+    val deviceStatuses: List<DeviceStatusResponse> = emptyList()
 )
 
 data class ImageUploadResponse(

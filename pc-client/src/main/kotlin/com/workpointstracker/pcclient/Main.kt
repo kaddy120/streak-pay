@@ -3,7 +3,6 @@ package com.workpointstracker.pcclient
 import com.workpointstracker.pcclient.api.ApiClient
 import com.workpointstracker.pcclient.config.Config
 import com.workpointstracker.pcclient.daemon.Daemon
-import com.workpointstracker.pcclient.web.WebServer
 import org.slf4j.LoggerFactory
 
 fun main(args: Array<String>) {
@@ -58,7 +57,7 @@ fun main(args: Array<String>) {
         println("Total points: ${points?.totalPoints?.let { "%.2f".format(it) } ?: "N/A"}")
         println("Streak: ${streak?.currentStreak ?: 0} days")
         if (streak?.streakAtRisk == true) {
-            println("⚠️  Streak at risk!")
+            println("  Streak at risk!")
         }
         return
     }
@@ -66,19 +65,5 @@ fun main(args: Array<String>) {
     logger.info("Loading config from: ${configPath ?: "~/.config/workpointsd/config.yaml"}")
 
     val daemon = Daemon(config)
-    val apiClient = ApiClient(config.api.base_url, config.api.api_key)
-
-    // Start web dashboard if enabled
-    var webServer: WebServer? = null
-    if (config.web_ui.enabled) {
-        webServer = WebServer(config.web_ui.port, daemon, apiClient)
-        webServer.start()
-    }
-
-    // Run daemon (blocks)
-    try {
-        daemon.start()
-    } finally {
-        webServer?.stop()
-    }
+    daemon.start()
 }

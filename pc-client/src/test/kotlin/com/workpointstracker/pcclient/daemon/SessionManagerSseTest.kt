@@ -273,6 +273,92 @@ class SessionManagerSseTest {
         }
     }
 
+    // ── DaemonCommand via SSE ──
+
+    @Test
+    fun `SSE daemon command start creates session when idle`() {
+        sseClient.eventQueue.add(SseEvent.DaemonCommand(
+            deviceId = sessionManager.deviceId,
+            action = "start"
+        ))
+
+        every { apiClient.createSession(any(), any(), any()) } returns SessionDto(
+            id = 77,
+            deviceId = sessionManager.deviceId,
+            startTime = now,
+            type = SessionType.SIDE_WORK
+        )
+
+        sessionManager.tick()
+
+        assertEquals(DaemonState.ACTIVE, sessionManager.state)
+        assertEquals(77L, sessionManager.currentSessionId)
+    }
+
+    @Test
+    fun `SSE daemon command pause pauses active session`() {
+        simulateActiveSession(sessionId = 42)
+
+        sseClient.eventQueue.add(SseEvent.DaemonCommand(
+            deviceId = sessionManager.deviceId,
+            action = "pause"
+        ))
+
+        every { apiClient.updateSession(any(), any()) } returns SessionDto(id = 42)
+
+        sessionManager.tick()
+
+        assertEquals(DaemonState.PAUSED, sessionManager.state)
+    }
+
+    @Test
+    fun `SSE daemon command resume resumes paused session`() {
+        simulatePausedSession(sessionId = 42)
+
+        sseClient.eventQueue.add(SseEvent.DaemonCommand(
+            deviceId = sessionManager.deviceId,
+            action = "resume"
+        ))
+
+        every { apiClient.updateSession(any(), any()) } returns SessionDto(id = 42)
+
+        sessionManager.tick()
+
+        assertEquals(DaemonState.ACTIVE, sessionManager.state)
+    }
+
+    @Test
+    fun `SSE daemon command stop ends active session`() {
+        simulateActiveSession(sessionId = 42)
+
+        sseClient.eventQueue.add(SseEvent.DaemonCommand(
+            deviceId = sessionManager.deviceId,
+            action = "stop"
+        ))
+
+        every { apiClient.updateSession(any(), any()) } returns SessionDto(id = 42)
+
+        sessionManager.tick()
+
+        assertEquals(DaemonState.IDLE, sessionManager.state)
+        assertNull(sessionManager.currentSessionId)
+    }
+
+    @Test
+    fun `SSE daemon command for different device is ignored`() {
+        simulateActiveSession(sessionId = 42)
+
+        sseClient.eventQueue.add(SseEvent.DaemonCommand(
+            deviceId = "android-other",
+            action = "stop"
+        ))
+
+        sessionManager.tick()
+
+        assertEquals(DaemonState.ACTIVE, sessionManager.state)
+        assertEquals(42L, sessionManager.currentSessionId)
+    }
+
     // ── Full SSE Lifecycle ──
 
     @Test

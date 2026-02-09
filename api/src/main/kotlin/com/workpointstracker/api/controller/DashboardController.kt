@@ -4,6 +4,7 @@ import com.workpointstracker.api.dto.*
 import com.workpointstracker.api.entity.DailyGoalEntity
 import com.workpointstracker.api.repository.DailyGoalRepository
 import com.workpointstracker.api.repository.SessionRepository
+import com.workpointstracker.api.service.DeviceStatusService
 import com.workpointstracker.api.service.SessionService
 import com.workpointstracker.api.service.StreakService
 import com.workpointstracker.shared.BadgeCalculator
@@ -19,7 +20,8 @@ class DashboardController(
     private val sessionService: SessionService,
     private val sessionRepository: SessionRepository,
     private val streakService: StreakService,
-    private val dailyGoalRepository: DailyGoalRepository
+    private val dailyGoalRepository: DailyGoalRepository,
+    private val deviceStatusService: DeviceStatusService
 ) {
     private val badgeCalculator = BadgeCalculator()
 
@@ -45,6 +47,18 @@ class DashboardController(
             motivationalMessage = motivationalMessage
         )
 
+        val deviceStatuses = deviceStatusService.getAllStatuses().map {
+            DeviceStatusResponse(
+                deviceId = it.deviceId,
+                state = it.state,
+                currentApp = it.currentApp,
+                sessionId = it.sessionId,
+                elapsedSeconds = it.elapsedSeconds,
+                pausedSeconds = it.pausedSeconds,
+                lastHeartbeat = it.lastHeartbeat.toString()
+            )
+        }
+
         return ResponseEntity.ok(
             DashboardResponse(
                 totalPoints = totalPoints,
@@ -53,7 +67,8 @@ class DashboardController(
                 recentSessions = recentSessions,
                 badges = badgesResponse,
                 activeSessions = activeSessions,
-                goals = DailyGoalResponse(dayJobHours = goal.dayJobHours, sideWorkHours = goal.sideWorkHours)
+                goals = DailyGoalResponse(dayJobHours = goal.dayJobHours, sideWorkHours = goal.sideWorkHours),
+                deviceStatuses = deviceStatuses
             )
         )
     }

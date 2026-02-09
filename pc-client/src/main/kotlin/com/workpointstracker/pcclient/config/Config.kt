@@ -1,5 +1,6 @@
 package com.workpointstracker.pcclient.config
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -8,11 +9,6 @@ import java.io.File
 data class ApiConfig(
     val base_url: String = "http://localhost:8080",
     val api_key: String = "dev-api-key-change-in-production"
-)
-
-data class WebUiConfig(
-    val enabled: Boolean = true,
-    val port: Int = 8742
 )
 
 data class TrackedApp(
@@ -27,11 +23,12 @@ data class Config(
     val idle_timeout_seconds: Int = 300,
     val end_after_paused_seconds: Int = 1800,
     val non_tracked_grace_seconds: Int = 120,
-    val web_ui: WebUiConfig = WebUiConfig(),
     val tracked_apps: List<TrackedApp> = defaultTrackedApps()
 ) {
     companion object {
-        private val mapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
+        private val mapper = ObjectMapper(YAMLFactory())
+            .registerKotlinModule()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
 
         fun load(path: String? = null): Config {
             val configFile = if (path != null) {

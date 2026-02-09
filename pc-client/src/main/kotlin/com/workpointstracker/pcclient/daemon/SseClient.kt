@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 sealed class SseEvent {
     data class SessionUpdated(val session: SessionDto) : SseEvent()
     data class SessionDeleted(val id: Long) : SseEvent()
+    data class DaemonCommand(val deviceId: String, val action: String) : SseEvent()
     data object Heartbeat : SseEvent()
 }
 
@@ -108,8 +109,14 @@ class SseClient(
                 val node = mapper.readTree(data)
                 SseEvent.SessionDeleted(node.get("id").asLong())
             }
+            "daemon.command" -> {
+                val node = mapper.readTree(data)
+                SseEvent.DaemonCommand(
+                    deviceId = node.get("deviceId").asText(),
+                    action = node.get("action").asText()
+                )
+            }
             "heartbeat" -> SseEvent.Heartbeat
-            // We only care about session events that affect our current session
             else -> null
         }
     }

@@ -127,7 +127,33 @@ data class DashboardResponse(
     val recentSessions: List<SessionResponse>,
     val badges: BadgesResponse,
     val activeSessions: List<SessionResponse>,
-    val goals: DailyGoalResponse
+    val goals: DailyGoalResponse,
+    val deviceStatuses: List<DeviceStatusResponse> = emptyList()
+)
+
+// Device Status DTOs
+data class DeviceHeartbeatRequest(
+    val deviceId: String,
+    val state: String,
+    val currentApp: String? = null,
+    val sessionId: Long? = null,
+    val elapsedSeconds: Long = 0,
+    val pausedSeconds: Long = 0
+)
+
+data class DeviceStatusResponse(
+    val deviceId: String,
+    val state: String,
+    val currentApp: String?,
+    val sessionId: Long?,
+    val elapsedSeconds: Long,
+    val pausedSeconds: Long,
+    val lastHeartbeat: String
+)
+
+data class DaemonCommandRequest(
+    val deviceId: String,
+    val action: String
 )
 
 // Image Upload DTO
