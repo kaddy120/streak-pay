@@ -57,7 +57,16 @@
       "Bash(git -C /home/kamarindi/workspace/learn/streak-pay log --oneline -20)",
       "Bash(git -C /home/kamarindi/workspace/learn/streak-pay show --stat 02f0d49)",
       "Bash(git -C /home/kamarindi/workspace/learn/streak-pay show --stat 07bf9f6)",
-      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay log --all --oneline --graph)"
+      "Bash(git -C /home/kamarindi/workspace/learn/streak-pay log --all --oneline --graph)",
+      "Bash(npx @angular/cli@19 new:*)",
+      "Bash(node --version:*)",
+      "Bash(npm --version:*)",
+      "Bash(sudo lsof:*)",
+      "Bash(sudo ss:*)",
+      "Bash(npx:*)",
+      "Bash(npm install:*)",
+      "Bash(pkill:*)",
+      "Bash(npm start)"
     ]
   }
 }

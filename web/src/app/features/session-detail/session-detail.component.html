@@ -1,0 +1,96 @@
+<button mat-button (click)="goBack()" class="back-btn">
+  <span class="material-symbols-rounded">arrow_back</span>
+  Back to Dashboard
+</button>
+
+@if (loading()) {
+  <mat-card class="detail-card skeleton" style="height: 300px"></mat-card>
+} @else if (session()) {
+  <div class="detail-layout">
+    <mat-card class="detail-card">
+      <mat-card-content>
+        <!-- Session Type Badge -->
+        <div class="type-badge" [style.background]="getSessionColor(session()!.type)">
+          <span class="material-symbols-rounded">{{ getSessionIcon(session()!.type) }}</span>
+          {{ session()!.type | sessionTypeLabel }}
+        </div>
+
+        @if (isActive()) {
+          <div class="active-badge">
+            <span class="active-dot"></span>
+            In Progress
+          </div>
+        }
+
+        <!-- Time Editors -->
+        <div class="time-editors">
+          <div class="time-field">
+            <label class="field-label">Start Time</label>
+            <div class="time-inputs">
+              <input type="date" [(ngModel)]="editStartDate" class="time-input">
+              <input type="time" [(ngModel)]="editStartTime" class="time-input">
+            </div>
+          </div>
+
+          @if (!isActive()) {
+            <div class="time-field">
+              <label class="field-label">End Time</label>
+              <div class="time-inputs">
+                <input type="date" [(ngModel)]="editEndDate" class="time-input">
+                <input type="time" [(ngModel)]="editEndTime" class="time-input">
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Duration</span>
+            <span class="stat-value">{{ session()!.durationMinutes | formatDuration }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Points Earned</span>
+            <span class="stat-value points" [style.color]="getSessionColor(session()!.type)">
+              +{{ session()!.pointsEarned | formatPoints }}
+            </span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Device</span>
+            <span class="stat-value">{{ session()!.deviceId }}</span>
+          </div>
+          @if (session()!.isPaused) {
+            <div class="stat-item">
+              <span class="stat-label">Status</span>
+              <span class="stat-value paused">Paused</span>
+            </div>
+          }
+        </div>
+
+        <!-- Actions -->
+        <div class="action-buttons">
+          <button mat-flat-button (click)="save()" class="gold-btn">
+            <span class="material-symbols-rounded">save</span>
+            Save Changes
+          </button>
+          @if (isActive() && !session()!.isPaused) {
+            <button mat-stroked-button (click)="stopSession()" class="stop-btn">
+              <span class="material-symbols-rounded">stop</span>
+              Stop
+            </button>
+          }
+          @if (session()!.isPaused) {
+            <button mat-stroked-button (click)="resumeSession()">
+              <span class="material-symbols-rounded">play_arrow</span>
+              Resume
+            </button>
+          }
+          <button mat-stroked-button color="warn" (click)="deleteSession()">
+            <span class="material-symbols-rounded">delete</span>
+            Delete
+          </button>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+}

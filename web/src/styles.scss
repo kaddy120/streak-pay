@@ -1,0 +1,402 @@
+@use '@angular/material' as mat;
+
+// ─── Light M3 Theme (default) ────────────────────
+html {
+  @include mat.theme((
+    color: (
+      theme-type: light,
+      primary: mat.$violet-palette,
+      tertiary: mat.$rose-palette,
+    ),
+    typography: 'DM Sans',
+    density: 0,
+  ));
+}
+
+// ─── Dark M3 Theme ───────────────────────────────
+.dark-theme {
+  @include mat.theme((
+    color: (
+      theme-type: dark,
+      primary: mat.$violet-palette,
+      tertiary: mat.$rose-palette,
+    ),
+    typography: 'DM Sans',
+    density: 0,
+  ));
+}
+
+// ─── Light Mode CSS Custom Properties (default) ──
+:root {
+  --color-bg: #F4F2ED;
+  --color-surface: rgba(255, 255, 255, 0.65);
+  --color-surface-border: rgba(0, 0, 0, 0.07);
+  --color-gold: #C4952E;
+  --color-indigo: #5558E3;
+  --color-day-job: #E06610;
+  --color-side-work: #1A9E48;
+  --color-early-morning: #1A8FCC;
+  --color-error: #DC2626;
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #5E5E72;
+  --color-text-muted: #9C9CB0;
+  --color-surface-dim: rgba(0, 0, 0, 0.035);
+  --grain-opacity: 0.02;
+  --orb-indigo: rgba(99, 102, 241, 0.06);
+  --orb-gold: rgba(196, 149, 46, 0.04);
+  --orb-blue: rgba(26, 143, 204, 0.03);
+  --card-bg: rgba(255, 255, 255, 0.55);
+  --dialog-bg: #FAFAF7;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+  --input-bg: rgba(255, 255, 255, 0.5);
+  --skeleton-hi: 0.7;
+  --skeleton-lo: 0.35;
+
+  // Badge gradients
+  --gradient-week-streak: linear-gradient(135deg, #FF6B35, #D32F2F);
+  --gradient-month-streak: linear-gradient(135deg, #FF6B35, #D32F2F);
+  --gradient-early-bird: linear-gradient(135deg, #FF9A8B, #4FC3F7);
+  --gradient-night-owl: linear-gradient(135deg, #7C4DFF, #303F9F);
+  --gradient-weekend-warrior: linear-gradient(135deg, #E53935, #8B0000);
+  --gradient-marathon-runner: linear-gradient(135deg, #00897B, #00E5FF);
+  --gradient-centurion: linear-gradient(135deg, #FFD700, #FF8F00);
+  --gradient-point-master-100: linear-gradient(135deg, #FFEB3B, #FFD700);
+  --gradient-point-master-500: linear-gradient(135deg, #FFD700, #FF9800);
+  --gradient-point-master-1000: linear-gradient(135deg, #FFE082, #FF6F00);
+  --gradient-consistent: linear-gradient(135deg, #66BB6A, #00C853);
+  --gradient-diversified: linear-gradient(135deg, #FF6B6B, #FFE66D, #4ECDC4);
+}
+
+// ─── Dark Mode CSS Custom Properties ─────────────
+.dark-theme {
+  --color-bg: #0A0D14;
+  --color-surface: rgba(255, 255, 255, 0.03);
+  --color-surface-border: rgba(255, 255, 255, 0.06);
+  --color-gold: #F0C756;
+  --color-indigo: #6366F1;
+  --color-day-job: #F97316;
+  --color-side-work: #22C55E;
+  --color-early-morning: #38BDF8;
+  --color-error: #EF4444;
+  --color-text-primary: #E8E8ED;
+  --color-text-secondary: #8B8B9E;
+  --color-text-muted: #52526B;
+  --color-surface-dim: rgba(255, 255, 255, 0.04);
+  --grain-opacity: 0.03;
+  --orb-indigo: rgba(99, 102, 241, 0.08);
+  --orb-gold: rgba(240, 199, 86, 0.05);
+  --orb-blue: rgba(56, 189, 248, 0.04);
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --dialog-bg: #12151E;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+  --input-bg: rgba(255, 255, 255, 0.03);
+  --skeleton-hi: 0.6;
+  --skeleton-lo: 0.2;
+}
+
+// ─── Global Resets ─────────────────────────────────
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: 'DM Sans', 'Helvetica Neue', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+// ─── Grain Texture Overlay ─────────────────────────
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+// ─── Floating Gradient Orbs ────────────────────────
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(600px circle at 20% 30%, var(--orb-indigo), transparent 60%),
+    radial-gradient(500px circle at 80% 70%, var(--orb-gold), transparent 60%),
+    radial-gradient(400px circle at 60% 20%, var(--orb-blue), transparent 60%);
+  animation: orb-drift 60s ease-in-out infinite alternate;
+  transition: background 0.5s ease;
+}
+
+@keyframes orb-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 30px) scale(0.95); }
+  100% { transform: translate(10px, -10px) scale(1.02); }
+}
+
+// ─── Material Symbols ──────────────────────────────
+.material-symbols-rounded {
+  font-variation-settings:
+    'FILL' 1,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+}
+
+// ─── Typography Utilities ──────────────────────────
+.font-display {
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-weight: 700;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+// ─── Glass Card Utility ────────────────────────────
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 16px;
+}
+
+// ─── Animated Gradient Border ──────────────────────
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.animated-border {
+  --border-angle: 0deg;
+  border: 2px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image:
+    linear-gradient(var(--color-bg), var(--color-bg)),
+    conic-gradient(from var(--border-angle), var(--color-gold), var(--color-indigo), var(--color-gold));
+  animation: border-rotate 3s linear infinite;
+}
+
+@keyframes border-rotate {
+  to { --border-angle: 360deg; }
+}
+
+// ─── Shimmer on Hover ──────────────────────────────
+.shimmer-on-hover {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.08) 45%,
+      rgba(255, 255, 255, 0.12) 50%,
+      rgba(255, 255, 255, 0.08) 55%,
+      transparent 60%
+    );
+    transform: translateX(-100%);
+    transition: none;
+    pointer-events: none;
+  }
+
+  &:hover::after {
+    transform: translateX(100%);
+    transition: transform 0.6s ease;
+  }
+}
+
+// ─── Stagger Entrance Animation ────────────────────
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-enter > * {
+  animation: fade-up 0.4s ease both;
+
+  @for $i from 1 through 12 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{$i * 0.06}s;
+    }
+  }
+}
+
+// ─── Hover Lift ────────────────────────────────────
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--color-surface-border);
+  }
+}
+
+.dark-theme .hover-lift:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+// ─── Utility Classes ───────────────────────────────
+.session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+
+  &.day-job { background: var(--color-day-job); }
+  &.side-work { background: var(--color-side-work); }
+  &.early-morning { background: var(--color-early-morning); }
+}
+
+.points-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge-gradient-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: white;
+}
+
+// ─── Material Component Overrides ──────────────────
+
+// Mat-Card → glass morphism (themed via vars)
+.mat-mdc-card {
+  background: var(--card-bg) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--color-surface-border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  color: var(--color-text-primary);
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.dark-theme .mat-mdc-card {
+  box-shadow: none !important;
+}
+
+// Mat-Progress-Bar
+.mat-mdc-progress-bar {
+  border-radius: 4px;
+  overflow: hidden;
+
+  .mdc-linear-progress__buffer-bar {
+    background-color: var(--color-surface-dim) !important;
+  }
+}
+
+// Mat-FAB
+.mat-mdc-fab, .mat-mdc-mini-fab, .mat-mdc-extended-fab {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+}
+
+.dark-theme .mat-mdc-fab,
+.dark-theme .mat-mdc-mini-fab,
+.dark-theme .mat-mdc-extended-fab {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+// Mat-Form-Field (dark inputs)
+.mat-mdc-form-field {
+  .mdc-text-field--outlined .mdc-notched-outline__leading,
+  .mdc-text-field--outlined .mdc-notched-outline__notch,
+  .mdc-text-field--outlined .mdc-notched-outline__trailing {
+    border-color: var(--color-surface-border) !important;
+  }
+
+  .mdc-text-field--outlined:not(.mdc-text-field--disabled).mdc-text-field--focused {
+    .mdc-notched-outline__leading,
+    .mdc-notched-outline__notch,
+    .mdc-notched-outline__trailing {
+      border-color: var(--color-gold) !important;
+    }
+  }
+}
+
+// Mat-Dialog
+.mat-mdc-dialog-container .mdc-dialog__surface {
+  background: var(--dialog-bg) !important;
+  border: 1px solid var(--color-surface-border) !important;
+  border-radius: 16px !important;
+}
+
+// Mat-Slide-Toggle gold accent
+.mat-mdc-slide-toggle.mat-accent .mdc-switch--selected .mdc-switch__handle::after {
+  background: var(--color-gold) !important;
+}
+
+// ─── Global Button Icon + Text Alignment ───────────
+.mat-mdc-button .mdc-button__label,
+.mat-mdc-raised-button .mdc-button__label,
+.mat-mdc-flat-button .mdc-button__label,
+.mat-mdc-unelevated-button .mdc-button__label,
+.mat-mdc-stroked-button .mdc-button__label,
+.mat-mdc-outlined-button .mdc-button__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+
+  .material-symbols-rounded {
+    font-size: 20px;
+    line-height: 1;
+    vertical-align: middle;
+  }
+}
+
+.mat-mdc-extended-fab .mdc-button__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  .material-symbols-rounded {
+    font-size: 22px;
+    line-height: 1;
+  }
+}
+
+// ─── Scrollbar Styling ─────────────────────────────
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

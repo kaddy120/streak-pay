@@ -28,5 +28,13 @@ services:
     ports:
       - "8080:8080"
 
+  web:
+    build: ./web
+    container_name: workpoints-web
+    depends_on:
+      - api
+    ports:
+      - "4200:80"
+
 volumes:
   postgres_data:
