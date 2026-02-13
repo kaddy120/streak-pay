@@ -27,27 +27,6 @@ data class SessionDto(
     val activeElapsedSeconds: Long = 0
 )
 
-data class TodayStats(
-    val totalMinutes: Long = 0,
-    val totalPoints: Double = 0.0,
-    val sessionCount: Int = 0,
-    val dayJobMinutes: Long = 0,
-    val sideWorkMinutes: Long = 0,
-    val earlyMorningMinutes: Long = 0
-)
-
-data class StreakDto(
-    val currentStreak: Int = 0,
-    val gracePeriodHoursRemaining: Long = 0,
-    val gracePeriodMinutesRemaining: Long = 0,
-    val streakAtRisk: Boolean = false,
-    val isUrgent: Boolean = false
-)
-
-data class PointsDto(
-    val totalPoints: Double = 0.0
-)
-
 class ApiClient(
     private val baseUrl: String,
     private val apiKey: String
@@ -80,10 +59,6 @@ class ApiClient(
         return put("/api/sessions/$id", body)?.let { mapper.readValue(it, SessionDto::class.java) }
     }
 
-    fun deleteSession(id: Long): Boolean {
-        return delete("/api/sessions/$id")
-    }
-
     fun getSession(id: Long): SessionDto? {
         return get("/api/sessions/$id")?.let { mapper.readValue(it, SessionDto::class.java) }
     }
@@ -91,28 +66,6 @@ class ApiClient(
     fun getActiveSessions(deviceId: String): List<SessionDto> {
         val response = get("/api/sessions/active?deviceId=$deviceId") ?: return emptyList()
         return mapper.readValue(response, mapper.typeFactory.constructCollectionType(List::class.java, SessionDto::class.java))
-    }
-
-    fun getAllActiveSessions(): List<SessionDto> {
-        val response = get("/api/sessions/active") ?: return emptyList()
-        return mapper.readValue(response, mapper.typeFactory.constructCollectionType(List::class.java, SessionDto::class.java))
-    }
-
-    fun getRecentSessions(): List<SessionDto> {
-        val response = get("/api/sessions") ?: return emptyList()
-        return mapper.readValue(response, mapper.typeFactory.constructCollectionType(List::class.java, SessionDto::class.java))
-    }
-
-    fun getTodayStats(): TodayStats? {
-        return get("/api/stats/today")?.let { mapper.readValue(it, TodayStats::class.java) }
-    }
-
-    fun getTotalPoints(): PointsDto? {
-        return get("/api/stats/points")?.let { mapper.readValue(it, PointsDto::class.java) }
-    }
-
-    fun getStreakInfo(): StreakDto? {
-        return get("/api/stats/streak")?.let { mapper.readValue(it, StreakDto::class.java) }
     }
 
     fun sendHeartbeat(

@@ -7,10 +7,6 @@ idle_timeout_seconds: 300          # 5 min → auto-pause
 end_after_paused_seconds: 1800     # 30 min paused → end session
 non_tracked_grace_seconds: 120     # 2 min on non-tracked app → pause
 
-web_ui:
-  enabled: true
-  port: 8742
-
 tracked_apps:
   - name: "VS Code"
     wm_class: "code"
