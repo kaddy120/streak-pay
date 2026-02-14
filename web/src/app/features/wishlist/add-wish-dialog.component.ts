@@ -53,7 +53,7 @@ import { CURRENCY_TO_POINTS_RATE } from '../../core/constants/points.constants';
     .full-width { width: 100%; }
     .points-preview {
       font-size: 14px;
-      color: var(--color-gold);
+      color: var(--color-accent);
       margin: -8px 0 16px;
     }
     .image-upload {

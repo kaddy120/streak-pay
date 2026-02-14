@@ -19,9 +19,9 @@
   align-items: center;
   gap: 8px;
 
-  .gold-icon {
+  .accent-icon {
     font-size: 28px;
-    color: var(--color-gold);
+    color: var(--color-accent);
   }
 
   .points-value {
@@ -29,7 +29,7 @@
     font-size: 28px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    color: var(--color-gold);
+    color: var(--color-accent);
   }
 
   .points-unit {
@@ -59,7 +59,7 @@
   padding-bottom: 20px;
   margin-bottom: 24px;
   border-bottom: 2px solid;
-  border-image: linear-gradient(to right, var(--color-gold), transparent) 1;
+  border-image: linear-gradient(to right, var(--color-accent), transparent) 1;
 
   &.at-risk {
     border-image: linear-gradient(to right, var(--color-error), transparent) 1;
@@ -78,7 +78,7 @@
   font-weight: 800;
   letter-spacing: -1px;
   line-height: 1;
-  background: linear-gradient(135deg, var(--color-gold), var(--color-day-job));
+  background: linear-gradient(135deg, var(--color-accent), var(--color-day-job));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -199,7 +199,7 @@
   .wish-remaining {
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
-    color: var(--color-gold);
+    color: var(--color-accent);
     white-space: nowrap;
   }
 }
@@ -225,7 +225,7 @@
     background-clip: padding-box, border-box !important;
     background-image:
       linear-gradient(var(--color-bg), var(--color-bg)),
-      conic-gradient(from var(--border-angle), var(--color-gold), var(--color-indigo), var(--color-gold)) !important;
+      conic-gradient(from var(--border-angle), var(--color-accent), var(--color-indigo), var(--color-accent)) !important;
   }
 }
 
@@ -306,7 +306,7 @@
   &.primary {
     width: 64px;
     height: 64px;
-    box-shadow: 0 6px 24px color-mix(in srgb, var(--color-gold) 35%, transparent);
+    box-shadow: 0 6px 24px color-mix(in srgb, var(--color-accent) 35%, transparent);
 
     .material-symbols-rounded {
       font-size: 34px;
@@ -314,13 +314,13 @@
 
     &:hover {
       transform: scale(1.08);
-      box-shadow: 0 8px 32px color-mix(in srgb, var(--color-gold) 45%, transparent);
+      box-shadow: 0 8px 32px color-mix(in srgb, var(--color-accent) 45%, transparent);
     }
   }
 
   &.start {
-    background: var(--color-gold);
-    color: #0A0D14;
+    background: var(--color-accent);
+    color: #FFFFFF;
   }
 
   &.resume {

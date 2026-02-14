@@ -28,7 +28,7 @@
 
   .material-symbols-rounded {
     font-size: 22px;
-    color: var(--color-gold);
+    color: var(--color-accent);
   }
 }
 
@@ -36,9 +36,9 @@
   width: 100%;
 }
 
-.gold-btn {
-  background: var(--color-gold) !important;
-  color: #0A0D14 !important;
+.accent-btn {
+  background: var(--color-accent) !important;
+  color: #FFFFFF !important;
 }
 
 .theme-toggle-row {

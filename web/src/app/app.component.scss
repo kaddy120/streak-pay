@@ -32,7 +32,7 @@
   font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
   font-size: 20px;
   font-weight: 700;
-  color: var(--color-gold);
+  color: var(--color-accent);
   text-decoration: none;
   margin-right: 24px;
   flex-shrink: 0;
@@ -68,8 +68,8 @@
   }
 
   &.active {
-    color: var(--color-gold);
-    background: color-mix(in srgb, var(--color-gold) 8%, transparent);
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
 }
 
@@ -189,8 +189,8 @@
   }
 
   &.active {
-    color: var(--color-gold);
-    background: color-mix(in srgb, var(--color-gold) 8%, transparent);
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   }
 }
 

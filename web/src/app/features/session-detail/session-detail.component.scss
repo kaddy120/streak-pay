@@ -89,8 +89,8 @@
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
     &:focus {
-      border-color: var(--color-gold);
-      box-shadow: 0 0 0 1px var(--color-gold);
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 1px var(--color-accent);
     }
 
     // Style the calendar/clock picker icons
@@ -146,9 +146,9 @@
   flex-wrap: wrap;
 }
 
-.gold-btn {
-  background: var(--color-gold) !important;
-  color: #0A0D14 !important;
+.accent-btn {
+  background: var(--color-accent) !important;
+  color: #FFFFFF !important;
 }
 
 .stop-btn {

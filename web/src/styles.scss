@@ -31,7 +31,7 @@ html {
   --color-bg: #F4F2ED;
   --color-surface: rgba(255, 255, 255, 0.65);
   --color-surface-border: rgba(0, 0, 0, 0.07);
-  --color-gold: #C4952E;
+  --color-accent: #7C3AED;
   --color-indigo: #5558E3;
   --color-day-job: #E06610;
   --color-side-work: #1A9E48;
@@ -43,7 +43,7 @@ html {
   --color-surface-dim: rgba(0, 0, 0, 0.035);
   --grain-opacity: 0.02;
   --orb-indigo: rgba(99, 102, 241, 0.06);
-  --orb-gold: rgba(196, 149, 46, 0.04);
+  --orb-accent: rgba(124, 58, 237, 0.04);
   --orb-blue: rgba(26, 143, 204, 0.03);
   --card-bg: rgba(255, 255, 255, 0.55);
   --dialog-bg: #FAFAF7;
@@ -73,7 +73,7 @@ html {
   --color-bg: #0A0D14;
   --color-surface: rgba(255, 255, 255, 0.03);
   --color-surface-border: rgba(255, 255, 255, 0.06);
-  --color-gold: #F0C756;
+  --color-accent: #A78BFA;
   --color-indigo: #6366F1;
   --color-day-job: #F97316;
   --color-side-work: #22C55E;
@@ -85,7 +85,7 @@ html {
   --color-surface-dim: rgba(255, 255, 255, 0.04);
   --grain-opacity: 0.03;
   --orb-indigo: rgba(99, 102, 241, 0.08);
-  --orb-gold: rgba(240, 199, 86, 0.05);
+  --orb-accent: rgba(167, 139, 250, 0.05);
   --orb-blue: rgba(56, 189, 248, 0.04);
   --card-bg: rgba(255, 255, 255, 0.03);
   --dialog-bg: #12151E;
@@ -128,7 +128,7 @@ body::after {
   pointer-events: none;
   background:
     radial-gradient(600px circle at 20% 30%, var(--orb-indigo), transparent 60%),
-    radial-gradient(500px circle at 80% 70%, var(--orb-gold), transparent 60%),
+    radial-gradient(500px circle at 80% 70%, var(--orb-accent), transparent 60%),
     radial-gradient(400px circle at 60% 20%, var(--orb-blue), transparent 60%);
   animation: orb-drift 60s ease-in-out infinite alternate;
   transition: background 0.5s ease;
@@ -183,7 +183,7 @@ body::after {
   background-clip: padding-box, border-box;
   background-image:
     linear-gradient(var(--color-bg), var(--color-bg)),
-    conic-gradient(from var(--border-angle), var(--color-gold), var(--color-indigo), var(--color-gold));
+    conic-gradient(from var(--border-angle), var(--color-accent), var(--color-indigo), var(--color-accent));
   animation: border-rotate 3s linear infinite;
 }
 
@@ -336,7 +336,7 @@ body::after {
     .mdc-notched-outline__leading,
     .mdc-notched-outline__notch,
     .mdc-notched-outline__trailing {
-      border-color: var(--color-gold) !important;
+      border-color: var(--color-accent) !important;
     }
   }
 }
@@ -350,7 +350,7 @@ body::after {
 
 // Mat-Slide-Toggle gold accent
 .mat-mdc-slide-toggle.mat-accent .mdc-switch--selected .mdc-switch__handle::after {
-  background: var(--color-gold) !important;
+  background: var(--color-accent) !important;
 }
 
 // ─── Global Button Icon + Text Alignment ───────────
@@ -381,6 +381,16 @@ body::after {
     font-size: 22px;
     line-height: 1;
   }
+}
+
+// ─── Global Button Border-Radius ─────────────────
+.mat-mdc-button,
+.mat-mdc-raised-button,
+.mat-mdc-flat-button,
+.mat-mdc-unelevated-button,
+.mat-mdc-stroked-button,
+.mat-mdc-outlined-button {
+  border-radius: 10px !important;
 }
 
 // ─── Scrollbar Styling ─────────────────────────────
