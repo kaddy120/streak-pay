@@ -2,8 +2,8 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -15,10 +15,25 @@ import { FormatPointsPipe } from '../../shared/pipes/format-points.pipe';
 import { FormatPricePipe } from '../../shared/pipes/format-price.pipe';
 
 @Component({
+  selector: 'app-confirm-delete-dialog',
+  standalone: true,
+  imports: [MatDialogModule, MatButtonModule],
+  template: `
+    <h2 mat-dialog-title>Delete item</h2>
+    <mat-dialog-content>Are you sure you want to delete this item?</mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Cancel</button>
+      <button mat-flat-button color="warn" [mat-dialog-close]="true">Delete</button>
+    </mat-dialog-actions>
+  `,
+})
+export class ConfirmDeleteDialogComponent {}
+
+@Component({
   selector: 'app-wish-detail',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule,
+    CommonModule, FormsModule, MatButtonModule, MatDialogModule,
     MatFormFieldModule, MatInputModule, MatSnackBarModule,
     FormatPointsPipe, FormatPricePipe,
   ],
@@ -29,6 +44,7 @@ export class WishDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private api = inject(ApiService);
+  private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
   fmt = inject(FormatService);
 
@@ -116,11 +132,14 @@ export class WishDetailComponent implements OnInit {
   delete(): void {
     const i = this.item();
     if (!i) return;
-    this.api.deleteWishItem(i.id).subscribe({
-      next: () => {
-        this.snackBar.open('Wish item deleted', 'OK', { duration: 2000 });
-        this.router.navigate(['/wishlist']);
-      },
+    this.dialog.open(ConfirmDeleteDialogComponent).afterClosed().subscribe((confirmed) => {
+      if (!confirmed) return;
+      this.api.deleteWishItem(i.id).subscribe({
+        next: () => {
+          this.snackBar.open('Wish item deleted', 'OK', { duration: 2000 });
+          this.router.navigate(['/wishlist']);
+        },
+      });
     });
   }
 

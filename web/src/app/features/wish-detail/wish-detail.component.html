@@ -1,14 +1,33 @@
-<button mat-button (click)="goBack()" class="back-btn">
-  <span class="material-symbols-rounded">arrow_back</span>
-  Back to Wish List
-</button>
+<div class="page-toolbar">
+  @if (editing()) {
+    <button mat-button (click)="cancelEdit()" class="back-btn">Cancel</button>
+  } @else {
+    <button mat-button (click)="goBack()" class="back-btn">
+      <span class="material-symbols-rounded">arrow_back</span>
+      Back to Wish List
+    </button>
+    @if (item()) {
+      <div class="toolbar-actions">
+        <button class="icon-btn" (click)="startEdit()" aria-label="Edit">
+          <span class="material-symbols-rounded">edit</span>
+        </button>
+        <button class="icon-btn icon-btn--danger" (click)="delete()" aria-label="Delete">
+          <span class="material-symbols-rounded">delete</span>
+        </button>
+      </div>
+    }
+  }
+</div>
 
 @if (loading()) {
-  <mat-card class="detail-card skeleton" style="height: 400px"></mat-card>
+  <div class="skeleton-layout">
+    <div class="skeleton-block skeleton-image"></div>
+    <div class="skeleton-block skeleton-info"></div>
+  </div>
 } @else if (item()) {
   <div class="detail-layout">
     <!-- Image -->
-    <div class="image-section">
+    <div class="image-wrapper">
       @if (getImageUrl(item()!.imageUrl)) {
         <img [src]="getImageUrl(item()!.imageUrl)" class="detail-image" [alt]="item()!.name">
       } @else {
@@ -20,56 +39,44 @@
 
     <!-- Info -->
     <div class="info-section">
-      <mat-card class="detail-card">
-        <mat-card-content>
-          @if (editing()) {
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Name</mat-label>
-              <input matInput [(ngModel)]="editName">
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="full-width">
-              <mat-label>Price (ZAR)</mat-label>
-              <input matInput type="number" [(ngModel)]="editPrice" min="0">
-            </mat-form-field>
-            <div class="edit-actions">
-              <button mat-button (click)="cancelEdit()">Cancel</button>
-              <button mat-flat-button (click)="saveEdit()" class="gold-btn">Save</button>
-            </div>
-          } @else {
-            <h2 class="item-name">{{ item()!.name }}</h2>
-            <div class="price-display">
-              <span class="price">{{ item()!.price | formatPrice }}</span>
-              <span class="points-badge" [class.affordable]="canAfford" [class.expensive]="!canAfford">
-                {{ pointsRequired | formatPoints }} pts required
-              </span>
-            </div>
+      @if (editing()) {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Name</mat-label>
+          <input matInput [(ngModel)]="editName">
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Price (ZAR)</mat-label>
+          <input matInput type="number" [(ngModel)]="editPrice" min="0">
+        </mat-form-field>
+        <div class="edit-actions">
+          <button mat-flat-button (click)="saveEdit()" class="accent-btn">Save</button>
+        </div>
+      } @else {
+        <h2 class="item-name">{{ item()!.name }}</h2>
+        <div class="accent-bar"></div>
+        <div class="price-display">
+          <span class="price">{{ item()!.price | formatPrice }}</span>
+        </div>
+        <div class="points-line">
+          <span class="points-value" [class.affordable]="canAfford" [class.expensive]="!canAfford">
+            {{ pointsRequired | formatPoints }} pts required
+          </span>
+        </div>
 
-            @if (item()!.isRedeemed) {
-              <div class="redeemed-notice">
-                <span class="material-symbols-rounded">check_circle</span>
-                Redeemed on {{ item()!.redeemedDate }}
-              </div>
-            }
+        @if (item()!.isRedeemed) {
+          <div class="redeemed-notice">
+            <span class="material-symbols-rounded">check_circle</span>
+            Redeemed on {{ item()!.redeemedDate }}
+          </div>
+        }
 
-            <div class="action-buttons">
-              @if (!item()!.isRedeemed) {
-                <button mat-flat-button [disabled]="!canAfford" (click)="redeem()" class="redeem-btn">
-                  <span class="material-symbols-rounded">redeem</span>
-                  Redeem
-                </button>
-              }
-              <button mat-stroked-button (click)="startEdit()">
-                <span class="material-symbols-rounded">edit</span>
-                Edit
-              </button>
-              <button mat-stroked-button color="warn" (click)="delete()">
-                <span class="material-symbols-rounded">delete</span>
-                Delete
-              </button>
-            </div>
-          }
-        </mat-card-content>
-      </mat-card>
+        @if (!item()!.isRedeemed) {
+          <button [disabled]="!canAfford" (click)="redeem()" class="redeem-btn shimmer-on-hover">
+            <span class="material-symbols-rounded">redeem</span>
+            Redeem
+          </button>
+        }
+      }
     </div>
   </div>
 }
