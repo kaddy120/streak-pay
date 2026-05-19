@@ -2,45 +2,98 @@ package com.workpointstracker.ui.wish
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.workpointstracker.data.local.database.WorkPointsDatabase
+import com.workpointstracker.WorkPointsApplication
 import com.workpointstracker.data.model.WishItem
-import com.workpointstracker.data.repository.SessionRepository
-import com.workpointstracker.data.repository.WishItemRepository
+import com.workpointstracker.data.remote.ApiService
+import com.workpointstracker.data.remote.CreateWishItemRequest
+import com.workpointstracker.data.remote.UpdateWishItemRequest
 import com.workpointstracker.util.FormatUtils
-import com.workpointstracker.util.ImageUtils
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
 
 class WishViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = WorkPointsDatabase.getDatabase(application)
-    private val wishItemRepository = WishItemRepository(database.wishItemDao())
-    private val sessionRepository = SessionRepository(database.sessionDao())
+    private val apiService: ApiService = (application as WorkPointsApplication).apiService
 
-    val availableWishItems = wishItemRepository.getAvailableWishItems()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _availableWishItems = MutableStateFlow<List<WishItem>>(emptyList())
+    val availableWishItems: StateFlow<List<WishItem>> = _availableWishItems
 
-    val redeemedWishItems = wishItemRepository.getRedeemedWishItems()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _redeemedWishItems = MutableStateFlow<List<WishItem>>(emptyList())
+    val redeemedWishItems: StateFlow<List<WishItem>> = _redeemedWishItems
 
-    val totalPoints = sessionRepository.getTotalPoints()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    private val _totalPoints = MutableStateFlow<Double?>(0.0)
+    val totalPoints: StateFlow<Double?> = _totalPoints
+
+    init {
+        viewModelScope.launch {
+            try { _totalPoints.value = apiService.getTotalPoints().totalPoints } catch (_: Exception) {}
+            fetchWishItems()
+        }
+    }
+
+    private suspend fun fetchWishItems() {
+        try {
+            val responses = apiService.getWishItems()
+            val items = responses.map { resp ->
+                WishItem(
+                    id = resp.id,
+                    name = resp.name,
+                    price = resp.price,
+                    imageUrl = resp.imageUrl,
+                    isRedeemed = resp.isRedeemed,
+                    redeemedDate = resp.redeemedDate?.atStartOfDay()
+                )
+            }
+            _availableWishItems.value = items.filter { !it.isRedeemed }
+            _redeemedWishItems.value = items.filter { it.isRedeemed }
+        } catch (e: Exception) {
+            Log.w("WishVM", "Wish items fetch failed", e)
+        }
+    }
 
     fun addWishItem(name: String, price: Double, imageUri: Uri) {
         viewModelScope.launch {
-            val imagePath = ImageUtils.saveImageToInternalStorage(getApplication(), imageUri)
-            if (imagePath != null) {
-                val wishItem = WishItem(
+            try {
+                // Upload image first
+                val imageUrl = uploadImage(imageUri)
+
+                apiService.createWishItem(CreateWishItemRequest(
                     name = name,
                     price = price,
-                    imagePath = imagePath
-                )
-                wishItemRepository.insertWishItem(wishItem)
+                    imageUrl = imageUrl
+                ))
+                fetchWishItems()
+            } catch (e: Exception) {
+                Log.e("WishVM", "Failed to add wish item", e)
             }
+        }
+    }
+
+    private suspend fun uploadImage(uri: Uri): String? {
+        return try {
+            val context = getApplication<Application>()
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File.createTempFile("upload_", ".jpg", context.cacheDir)
+            FileOutputStream(tempFile).use { out -> inputStream.copyTo(out) }
+            inputStream.close()
+
+            val requestBody = tempFile.asRequestBody("image/jpeg".toMediaType())
+            val part = MultipartBody.Part.createFormData("file", tempFile.name, requestBody)
+            val response = apiService.uploadImage(part)
+            tempFile.delete()
+            response.url
+        } catch (e: Exception) {
+            Log.w("WishVM", "Image upload failed", e)
+            null
         }
     }
 
@@ -49,26 +102,23 @@ class WishViewModel(application: Application) : AndroidViewModel(application) {
             val currentPoints = totalPoints.value ?: 0.0
             val requiredPoints = FormatUtils.priceToPoints(wishItem.price)
             if (currentPoints >= requiredPoints) {
-                // Update wish item as redeemed
-                val updatedWishItem = wishItem.copy(
-                    isRedeemed = true,
-                    redeemedDate = LocalDateTime.now()
-                )
-                wishItemRepository.updateWishItem(updatedWishItem)
-
-                // Deduct points by inserting a negative session
-                // (We'll track this differently in a real app, but for simplicity)
-                // Actually, let's not do this. Instead, we'll just mark as redeemed
-                // and let the UI handle the display of remaining points
-                // The user doesn't "lose" points, they just mark items as purchased
+                try {
+                    apiService.updateWishItem(wishItem.id, UpdateWishItemRequest(
+                        isRedeemed = true,
+                        redeemedDate = java.time.LocalDate.now()
+                    ))
+                    fetchWishItems()
+                } catch (_: Exception) { }
             }
         }
     }
 
     fun deleteWishItem(wishItem: WishItem) {
         viewModelScope.launch {
-            ImageUtils.deleteImage(getApplication(), wishItem.imagePath)
-            wishItemRepository.deleteWishItem(wishItem)
+            try {
+                apiService.deleteWishItem(wishItem.id)
+                fetchWishItems()
+            } catch (_: Exception) { }
         }
     }
 }

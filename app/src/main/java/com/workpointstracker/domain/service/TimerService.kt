@@ -6,7 +6,9 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.workpointstracker.MainActivity
@@ -18,8 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 class TimerService : Service() {
 
@@ -30,9 +30,7 @@ class TimerService : Service() {
     val timerState: StateFlow<TimerState> = _timerState
 
     private var timerJob: Job? = null
-    private var startTime: LocalDateTime? = null
-    private var pausedTime: LocalDateTime? = null
-    private var totalPausedSeconds: Long = 0
+    private var apiElapsedSeconds: Long = 0
     private var currentSessionId: Long? = null
 
     companion object {
@@ -69,18 +67,24 @@ class TimerService : Service() {
     fun startTimer() {
         if (_timerState.value !is TimerState.Idle) return
 
-        startTime = LocalDateTime.now()
-        totalPausedSeconds = 0
+        apiElapsedSeconds = 0
         _timerState.value = TimerState.Running(0)
 
-        startForeground(NOTIFICATION_ID, createNotification("00:00:00"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification("00:00:00"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification("00:00:00"))
+        }
         startTimerJob()
     }
 
     fun pauseTimer() {
         if (_timerState.value !is TimerState.Running) return
 
-        pausedTime = LocalDateTime.now()
         val currentElapsed = getCurrentElapsedSeconds()
         _timerState.value = TimerState.Paused(currentElapsed)
 
@@ -91,13 +95,8 @@ class TimerService : Service() {
     fun resumeTimer() {
         if (_timerState.value !is TimerState.Paused) return
 
-        val pauseStart = pausedTime ?: return
-        val pauseDuration = ChronoUnit.SECONDS.between(pauseStart, LocalDateTime.now())
-        totalPausedSeconds += pauseDuration
-
         val currentElapsed = getCurrentElapsedSeconds()
         _timerState.value = TimerState.Running(currentElapsed)
-        pausedTime = null
 
         startTimerJob()
     }
@@ -118,33 +117,31 @@ class TimerService : Service() {
         timerJob = serviceScope.launch {
             while (true) {
                 delay(1000)
-                val elapsed = getCurrentElapsedSeconds()
-                _timerState.value = TimerState.Running(elapsed)
-                updateNotification(formatTime(elapsed))
+                apiElapsedSeconds++
+                _timerState.value = TimerState.Running(apiElapsedSeconds)
+                updateNotification(formatTime(apiElapsedSeconds))
             }
         }
     }
 
     private fun getCurrentElapsedSeconds(): Long {
-        val start = startTime ?: return 0
-        val totalElapsed = ChronoUnit.SECONDS.between(start, LocalDateTime.now())
-        return totalElapsed - totalPausedSeconds
+        return apiElapsedSeconds
     }
 
-    fun getStartTime(): LocalDateTime? = startTime
+    fun syncFromApi(activeElapsedSeconds: Long, shouldResume: Boolean) {
+        this.apiElapsedSeconds = activeElapsedSeconds
 
-    fun setStartTime(newStartTime: LocalDateTime) {
-        startTime = newStartTime
-        // Recalculate and update the timer state immediately
-        val elapsed = getCurrentElapsedSeconds()
-        when (_timerState.value) {
-            is TimerState.Running -> _timerState.value = TimerState.Running(elapsed)
-            is TimerState.Paused -> _timerState.value = TimerState.Paused(elapsed)
-            else -> {}
+        if (shouldResume && _timerState.value is TimerState.Paused) {
+            _timerState.value = TimerState.Running(apiElapsedSeconds)
+            startTimerJob()
+        } else {
+            when (_timerState.value) {
+                is TimerState.Running -> _timerState.value = TimerState.Running(apiElapsedSeconds)
+                is TimerState.Paused -> _timerState.value = TimerState.Paused(apiElapsedSeconds)
+                else -> {}
+            }
         }
     }
-
-    fun getTotalPausedSeconds(): Long = totalPausedSeconds
 
     fun getCurrentSessionId(): Long? = currentSessionId
 

@@ -18,8 +18,9 @@ import com.workpointstracker.util.FormatUtils
 @Composable
 fun HistoryScreen(viewModel: HistoryViewModel = viewModel()) {
     val totalPoints by viewModel.totalPoints.collectAsState()
-    val appSettings by viewModel.appSettings.collectAsState()
-    val dailyGoal by viewModel.dailyGoal.collectAsState()
+    val currentStreak by viewModel.currentStreak.collectAsState()
+    val dayJobGoalHours by viewModel.dayJobGoalHours.collectAsState()
+    val sideWorkGoalHours by viewModel.sideWorkGoalHours.collectAsState()
     val selectedPeriod by viewModel.selectedPeriod.collectAsState()
     val statsData by viewModel.statsData.collectAsState()
 
@@ -88,22 +89,20 @@ fun HistoryScreen(viewModel: HistoryViewModel = viewModel()) {
 
                 statsData?.let { data ->
                     // Day job progress
-                    val dayJobGoal = dailyGoal?.dayJobHours ?: 7.5
                     ProgressRow(
                         label = "Day Job",
                         current = data.dayJobHours,
-                        goal = if (selectedPeriod == TimePeriod.DAY) dayJobGoal else dayJobGoal * 7,
+                        goal = if (selectedPeriod == TimePeriod.DAY) dayJobGoalHours else dayJobGoalHours * 7,
                         color = DayJobColor
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Side work progress
-                    val sideWorkGoal = dailyGoal?.sideWorkHours ?: 4.0
                     ProgressRow(
                         label = "Side Work",
                         current = data.sideWorkHours,
-                        goal = if (selectedPeriod == TimePeriod.DAY) sideWorkGoal else sideWorkGoal * 7,
+                        goal = if (selectedPeriod == TimePeriod.DAY) sideWorkGoalHours else sideWorkGoalHours * 7,
                         color = SideWorkColor
                     )
 
@@ -141,15 +140,15 @@ fun HistoryScreen(viewModel: HistoryViewModel = viewModel()) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "${appSettings?.currentStreak ?: 0} days",
+                    text = "$currentStreak days",
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 val streakBonus = when {
-                    (appSettings?.currentStreak ?: 0) >= 30 -> 20
-                    (appSettings?.currentStreak ?: 0) >= 7 -> 15
-                    (appSettings?.currentStreak ?: 0) >= 3 -> 10
+                    currentStreak >= 30 -> 20
+                    currentStreak >= 7 -> 15
+                    currentStreak >= 3 -> 10
                     else -> 0
                 }
                 if (streakBonus > 0) {

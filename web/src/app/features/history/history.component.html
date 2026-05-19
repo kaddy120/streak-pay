@@ -1,0 +1,87 @@
+<div class="history-header">
+  <div>
+    <h1 class="page-title">History</h1>
+    <p class="page-subtitle">{{ totalPoints() | formatPoints }} total pts</p>
+  </div>
+</div>
+
+<!-- Period Selector -->
+<div class="period-selector">
+  @for (period of periods; track period) {
+    <button class="period-btn" [class.active]="selectedPeriod() === period" (click)="selectPeriod(period)">
+      {{ period | titlecase }}
+    </button>
+  }
+</div>
+
+@if (loading()) {
+  <mat-card class="stats-card skeleton" style="height: 200px"></mat-card>
+} @else {
+  <div class="stagger-enter">
+    <!-- Stats Card -->
+    <mat-card class="stats-card">
+      <mat-card-content>
+        <h3 class="card-title">{{ selectedPeriod() | titlecase }} Stats</h3>
+
+        <!-- Day Job Progress -->
+        <div class="progress-row">
+          <div class="progress-header">
+            <span class="progress-label">
+              <span class="color-dot" style="background: var(--color-day-job)"></span>
+              Day Job
+            </span>
+            <span class="progress-value">{{ dayJobMinutes() | formatDuration }} / {{ goals().dayJobHours }}h</span>
+          </div>
+          <mat-progress-bar mode="determinate" [value]="dayJobProgress() * 100" class="day-job-bar"></mat-progress-bar>
+        </div>
+
+        <!-- Side Work Progress -->
+        <div class="progress-row">
+          <div class="progress-header">
+            <span class="progress-label">
+              <span class="color-dot" style="background: var(--color-side-work)"></span>
+              Side Work
+            </span>
+            <span class="progress-value">{{ sideWorkMinutes() | formatDuration }} / {{ goals().sideWorkHours }}h</span>
+          </div>
+          <mat-progress-bar mode="determinate" [value]="sideWorkProgress() * 100" class="side-work-bar"></mat-progress-bar>
+        </div>
+
+        <!-- Period Total -->
+        <div class="period-total">
+          <span class="total-label">Points earned</span>
+          <span class="total-value">{{ periodPoints() | formatPoints }}</span>
+        </div>
+
+        <div class="period-total">
+          <span class="total-label">Sessions</span>
+          <span class="total-value">{{ sessions().length }}</span>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Streak Card -->
+    @if (streak(); as s) {
+      <mat-card class="streak-card">
+        <mat-card-content>
+          <div class="streak-display">
+            <div class="streak-main">
+              <span class="streak-number">{{ s.currentStreak }}</span>
+              <span class="streak-text">day streak</span>
+            </div>
+            @if (streakBonus() > 0) {
+              <div class="bonus-badge">+{{ streakBonus() }}% bonus</div>
+            }
+          </div>
+
+          @if (s.gracePeriodHoursRemaining > 0) {
+            <div class="grace-info" [class.urgent]="s.isUrgent">
+              <span class="material-symbols-rounded" style="font-size: 18px">{{ s.streakAtRisk ? 'warning' : 'schedule' }}</span>
+              Grace period: {{ s.gracePeriodHoursRemaining }}h {{ s.gracePeriodMinutesRemaining }}m remaining
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+}

@@ -1,0 +1,38 @@
+api:
+  base_url: "http://localhost:8080"
+  api_key: "dev-api-key-change-in-production"
+
+poll_interval_seconds: 2
+idle_timeout_seconds: 300          # 5 min → auto-pause
+end_after_paused_seconds: 1800     # 30 min paused → end session
+non_tracked_grace_seconds: 120     # 2 min on non-tracked app → pause
+
+tracked_apps:
+  - name: "VS Code"
+    wm_class: "code"
+  - name: "IntelliJ IDEA"
+    wm_class: "jetbrains-idea"
+  - name: "PyCharm"
+    wm_class: "jetbrains-pycharm"
+  - name: "Android Studio"
+    wm_class: "jetbrains-studio"
+  - name: "Microsoft Teams"
+    wm_class: "teams-for-linux"
+  - name: "Slack"
+    wm_class: "slack"
+  - name: "Zoom"
+    wm_class: "zoom"
+  - name: "Obsidian"
+    wm_class: "obsidian"
+  - name: "Notion"
+    title_contains: "Notion"
+  - name: "Terminal (GNOME)"
+    wm_class: "gnome-terminal"
+  - name: "Kitty"
+    wm_class: "kitty"
+  - name: "Alacritty"
+    wm_class: "Alacritty"
+  - name: "Firefox"
+    wm_class: "firefox"
+  - name: "Chrome"
+    wm_class: "google-chrome"

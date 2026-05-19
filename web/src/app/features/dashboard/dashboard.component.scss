@@ -1,0 +1,559 @@
+// ─── Greeting ─────────────────────────────────────
+.greeting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.greeting-text {
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.total-points-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .accent-icon {
+    font-size: 28px;
+    color: var(--color-accent);
+  }
+
+  .points-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-accent);
+  }
+
+  .points-unit {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+  }
+}
+
+// ─── Page Container ─────────────────────────────────
+.dashboard-page {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+// ─── Stacked Layout ─────────────────────────────────
+.dashboard-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+// ─── Streak Strip ───────────────────────────────
+.streak-strip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid;
+  border-image: linear-gradient(to right, var(--color-accent), transparent) 1;
+
+  &.at-risk {
+    border-image: linear-gradient(to right, var(--color-error), transparent) 1;
+  }
+}
+
+.streak-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.streak-number {
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-day-job));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.streak-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.streak-unit {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--color-text-muted);
+}
+
+.streak-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-error);
+
+  .material-symbols-rounded {
+    font-size: 14px;
+  }
+}
+
+.streak-grace {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+// ─── Encouragement Card ──────────────────────────
+
+.motivational-msg {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.badges-section {
+  margin-top: 14px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.badges-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 0 4px;
+
+  &::-webkit-scrollbar { height: 0; }
+}
+
+.badge-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  white-space: nowrap;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+
+  &.highlighted {
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .badge-icon {
+    font-size: 16px;
+  }
+}
+
+.wish-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+
+  .wish-emoji {
+    font-size: 18px;
+  }
+
+  .wish-info {
+    flex: 1;
+
+    .wish-name {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--color-text-secondary);
+    }
+
+    mat-progress-bar {
+      border-radius: 3px;
+    }
+  }
+
+  .wish-remaining {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--color-accent);
+    white-space: nowrap;
+  }
+}
+
+// ─── Timer Card ──────────────────────────────────
+.timer-card {
+  text-align: center;
+
+  &.remote {
+    border-color: color-mix(in srgb, var(--color-indigo) 20%, transparent) !important;
+    cursor: pointer;
+  }
+
+  &.clickable {
+    cursor: pointer;
+  }
+
+  &.running {
+    animation: border-rotate 3s linear infinite;
+    --border-angle: 0deg;
+    border: 2px solid transparent !important;
+    background-origin: border-box !important;
+    background-clip: padding-box, border-box !important;
+    background-image:
+      linear-gradient(var(--color-bg), var(--color-bg)),
+      conic-gradient(from var(--border-angle), var(--color-accent), var(--color-indigo), var(--color-accent)) !important;
+  }
+}
+
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes border-rotate {
+  to { --border-angle: 360deg; }
+}
+
+.timer-header {
+  margin-bottom: 16px;
+
+  .timer-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .timer-subtitle {
+    display: block;
+    font-size: 13px;
+    color: var(--color-text-muted);
+  }
+}
+
+.timer-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 72px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+  color: var(--color-text-primary);
+  margin-bottom: 24px;
+  line-height: 1;
+}
+
+// ─── Spotify-Style Circular Buttons ──────────────
+.timer-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.spotify-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+
+  .material-symbols-rounded {
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  &:hover {
+    transform: scale(1.06);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  // Primary start button — larger, more prominent
+  &.primary {
+    width: 64px;
+    height: 64px;
+    box-shadow: 0 6px 24px color-mix(in srgb, var(--color-accent) 35%, transparent);
+
+    .material-symbols-rounded {
+      font-size: 34px;
+    }
+
+    &:hover {
+      transform: scale(1.08);
+      box-shadow: 0 8px 32px color-mix(in srgb, var(--color-accent) 45%, transparent);
+    }
+  }
+
+  &.start {
+    background: var(--color-accent);
+    color: #FFFFFF;
+  }
+
+  &.resume {
+    background: var(--color-side-work);
+    color: white;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--color-side-work) 30%, transparent);
+
+    &:hover {
+      box-shadow: 0 6px 24px color-mix(in srgb, var(--color-side-work) 40%, transparent);
+    }
+  }
+
+  &.pause {
+    background: var(--color-day-job);
+    color: white;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--color-day-job) 30%, transparent);
+
+    &:hover {
+      box-shadow: 0 6px 24px color-mix(in srgb, var(--color-day-job) 40%, transparent);
+    }
+  }
+
+  &.stop {
+    background: var(--color-error);
+    color: white;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--color-error) 25%, transparent);
+
+    &:hover {
+      box-shadow: 0 6px 24px color-mix(in srgb, var(--color-error) 35%, transparent);
+    }
+
+    &:disabled {
+      background: var(--color-surface-dim);
+      color: var(--color-text-muted);
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+    }
+  }
+}
+
+// ─── Device Status ───────────────────────────────
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  color: var(--color-text-primary);
+
+  .material-symbols-rounded {
+    font-size: 22px;
+    color: var(--color-text-secondary);
+  }
+}
+
+.devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.device-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--color-surface-dim);
+  border: 1px solid var(--color-surface-border);
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-surface-dim) 200%, transparent);
+  }
+}
+
+.device-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  .device-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .device-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .device-detail {
+    display: block;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+}
+
+.device-elapsed {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+// ─── Sessions Card ───────────────────────────────
+.empty-text {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 24px 0;
+}
+
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border-left: 4px solid;
+  background: var(--color-surface-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-surface-dim) 200%, transparent);
+  }
+}
+
+.session-info {
+  .session-date {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .session-time {
+    display: block;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+
+  .session-duration {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+  }
+}
+
+.session-points {
+  text-align: right;
+
+  .points-earned {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .session-type-label {
+    display: block;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+}
+
+// ─── Loading State ───────────────────────────────
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  .skeleton-card {
+    animation: skeleton-pulse 1.5s infinite;
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: var(--skeleton-hi); }
+  50% { opacity: var(--skeleton-lo); }
+}
+
+// ─── Responsive ──────────────────────────────────
+@media (max-width: 600px) {
+  .greeting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .streak-strip {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .streak-number {
+    font-size: 40px;
+  }
+
+  .timer-display {
+    font-size: 48px;
+  }
+
+  .spotify-btn {
+    width: 48px;
+    height: 48px;
+
+    .material-symbols-rounded {
+      font-size: 24px;
+    }
+
+    &.primary {
+      width: 56px;
+      height: 56px;
+
+      .material-symbols-rounded {
+        font-size: 28px;
+      }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+<h1 class="page-title">Settings</h1>
+
+<div class="settings-layout stagger-enter">
+  <!-- User Profile -->
+  <mat-card class="settings-card">
+    <mat-card-content>
+      <h3 class="card-title">
+        <span class="material-symbols-rounded">person</span>
+        Profile
+      </h3>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Display Name</mat-label>
+        <input matInput [(ngModel)]="userName" placeholder="Your name">
+      </mat-form-field>
+      <button mat-flat-button (click)="saveUserName()" class="accent-btn">Save Name</button>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Daily Goals -->
+  <mat-card class="settings-card">
+    <mat-card-content>
+      <h3 class="card-title">
+        <span class="material-symbols-rounded">target</span>
+        Daily Goals
+      </h3>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Day Job (hours)</mat-label>
+        <input matInput type="number" [(ngModel)]="dayJobHours" min="0" max="24" step="0.5">
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Side Work (hours)</mat-label>
+        <input matInput type="number" [(ngModel)]="sideWorkHours" min="0" max="24" step="0.5">
+      </mat-form-field>
+      <button mat-flat-button (click)="saveGoals()" class="accent-btn">Save Goals</button>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Appearance -->
+  <mat-card class="settings-card">
+    <mat-card-content>
+      <h3 class="card-title">
+        <span class="material-symbols-rounded">palette</span>
+        Appearance
+      </h3>
+      <div class="theme-toggle-row">
+        <div>
+          <span class="toggle-label">Dark Mode</span>
+          <span class="toggle-sub">Switch between light and dark theme</span>
+        </div>
+        <mat-slide-toggle [checked]="theme.darkMode()" (change)="theme.toggle()"></mat-slide-toggle>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- About -->
+  <mat-card class="settings-card">
+    <mat-card-content>
+      <h3 class="card-title">
+        <span class="material-symbols-rounded">info</span>
+        About
+      </h3>
+      <div class="about-info">
+        <p><strong>Streak Pay</strong> - Work Points Tracker</p>
+        <p class="about-sub">Track work sessions, earn points, unlock rewards. Stay consistent and build your streak!</p>
+        <p class="about-version">Web Dashboard v1.0</p>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

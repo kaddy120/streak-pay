@@ -18,13 +18,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.workpointstracker.data.local.database.WorkPointsDatabase
+import com.workpointstracker.WorkPointsApplication
 import com.workpointstracker.data.model.Session
 import com.workpointstracker.data.model.SessionType
-import com.workpointstracker.data.repository.SessionRepository
-import com.workpointstracker.data.repository.SettingsRepository
-import com.workpointstracker.domain.usecase.PointsCalculator
-import com.workpointstracker.domain.usecase.StreakManager
+import com.workpointstracker.data.remote.ApiService
+import com.workpointstracker.data.remote.SessionResponse
+import com.workpointstracker.data.remote.UpdateSessionRequest
+import com.workpointstracker.shared.PointsCalculator
 import com.workpointstracker.ui.theme.DayJobColor
 import com.workpointstracker.ui.theme.EarlyMorningColor
 import com.workpointstracker.ui.theme.SideWorkColor
@@ -41,14 +41,8 @@ import java.time.temporal.ChronoUnit
 // ViewModel
 class SessionDetailViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = WorkPointsDatabase.getDatabase(application)
-    private val sessionRepository = SessionRepository(database.sessionDao())
-    private val settingsRepository = SettingsRepository(
-        database.appSettingsDao(),
-        database.dailyGoalDao()
-    )
+    private val apiService: ApiService = (application as WorkPointsApplication).apiService
     private val pointsCalculator = PointsCalculator()
-    private val streakManager = StreakManager(settingsRepository)
 
     private val _session = MutableStateFlow<Session?>(null)
     val session: StateFlow<Session?> = _session
@@ -83,16 +77,30 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
     fun loadSession(sessionId: Long) {
         viewModelScope.launch {
             _isLoading.value = true
-            val loadedSession = sessionRepository.getSessionById(sessionId)
-            _session.value = loadedSession
-            loadedSession?.let {
-                _editedStartTime.value = it.startTime
-                _editedEndTime.value = it.endTime
+            try {
+                val resp = apiService.getSession(sessionId)
+                _session.value = resp.toLocalSession()
+                _editedStartTime.value = resp.startTime
+                _editedEndTime.value = resp.endTime
                 updatePreview()
+            } catch (_: Exception) {
+                _session.value = null
             }
             _isLoading.value = false
         }
     }
+
+    private fun SessionResponse.toLocalSession() = Session(
+        id = id,
+        startTime = startTime,
+        endTime = endTime,
+        durationMinutes = durationMinutes,
+        pointsEarned = pointsEarned,
+        type = SessionType.valueOf(type.name),
+        isPaused = isPaused,
+        pausedAt = pausedAt,
+        totalPausedSeconds = totalPausedSeconds
+    )
 
     fun updateStartTime(newTime: LocalDateTime) {
         _editedStartTime.value = newTime
@@ -110,23 +118,20 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
         val originalSession = _session.value ?: return
         val today = LocalDate.now()
 
-        // Validation 1: Session must be from today
         if (startTime.toLocalDate() != today) {
             _validationError.value = "Can only edit sessions from today"
             _previewPoints.value = null
             return
         }
 
-        // Validation 2: End time must be after start time (if session is completed)
         if (endTime != null && !endTime.isAfter(startTime)) {
             _validationError.value = "End time must be after start time"
             _previewPoints.value = null
             return
         }
 
-        // Validation 3: Duration must be >= 15 minutes
         val effectiveEndTime = endTime ?: LocalDateTime.now()
-        val durationMinutes = ChronoUnit.MINUTES.between(startTime, effectiveEndTime) - originalSession.totalPausedMinutes
+        val durationMinutes = (ChronoUnit.SECONDS.between(startTime, effectiveEndTime) - originalSession.totalPausedSeconds) / 60
         if (durationMinutes < 15) {
             _validationError.value = "Duration must be at least 15 minutes"
             _previewPoints.value = null
@@ -144,33 +149,31 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
             val originalSession = _session.value ?: return@launch
 
             val effectiveEndTime = endTime ?: LocalDateTime.now()
-            val durationMinutes = ChronoUnit.MINUTES.between(startTime, effectiveEndTime) - originalSession.totalPausedMinutes
+            val durationMinutes = (ChronoUnit.SECONDS.between(startTime, effectiveEndTime) - originalSession.totalPausedSeconds) / 60
 
             if (durationMinutes < 15) {
                 _previewPoints.value = null
                 return@launch
             }
 
-            val today = LocalDate.now()
-            val sessionsToday = sessionRepository.getCompletedSessionsForDate(today)
-                .filter { it.id != originalSession.id }
+            // Use shared PointsCalculator for client-side preview
+            val sharedType = pointsCalculator.determineSessionType(startTime)
+            val sessionType = SessionType.valueOf(sharedType.name)
 
-            // Check if this will be the first session (earliest start time)
-            val isFirstSession = sessionsToday.isEmpty() ||
-                sessionsToday.all { it.startTime.isAfter(startTime) }
-
-            val currentStreak = streakManager.getCurrentStreak()
-            val sessionType = pointsCalculator.determineSessionType(startTime)
+            // Get streak from API for accurate calculation
+            val currentStreak = try {
+                apiService.getStreakInfo().currentStreak
+            } catch (_: Exception) { 0 }
 
             val result = pointsCalculator.calculatePoints(
                 startTime = startTime,
                 durationMinutes = durationMinutes,
                 streakDays = currentStreak,
-                isFirstSessionOfDay = isFirstSession && sessionType != SessionType.DAY_JOB
+                isFirstSessionOfDay = false // approximation for preview
             )
 
             _previewPoints.value = result.points
-            _previewSessionType.value = result.sessionType
+            _previewSessionType.value = SessionType.valueOf(result.sessionType.name)
         }
     }
 
@@ -179,23 +182,21 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
             val originalSession = _session.value ?: return@launch
             val startTime = _editedStartTime.value ?: return@launch
             val endTime = _editedEndTime.value ?: return@launch
-            val previewPts = _previewPoints.value ?: return@launch
-            val sessionType = _previewSessionType.value ?: return@launch
 
             if (_validationError.value != null) return@launch
 
-            val durationMinutes = ChronoUnit.MINUTES.between(startTime, endTime) - originalSession.totalPausedMinutes
+            val durationMinutes = (ChronoUnit.SECONDS.between(startTime, endTime) - originalSession.totalPausedSeconds) / 60
 
-            val updatedSession = originalSession.copy(
-                startTime = startTime,
-                endTime = endTime,
-                durationMinutes = durationMinutes,
-                pointsEarned = previewPts,
-                type = sessionType
-            )
-
-            sessionRepository.updateSession(updatedSession)
-            _saveSuccess.value = true
+            try {
+                apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                    startTime = startTime,
+                    endTime = endTime,
+                    durationMinutes = durationMinutes
+                ))
+                _saveSuccess.value = true
+            } catch (e: Exception) {
+                _validationError.value = "Failed to save: ${e.message}"
+            }
         }
     }
 
@@ -209,47 +210,34 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
                 return@launch
             }
 
-            val durationMinutes = ChronoUnit.MINUTES.between(startTime, endTime) - originalSession.totalPausedMinutes
+            val durationMinutes = (ChronoUnit.SECONDS.between(startTime, endTime) - originalSession.totalPausedSeconds) / 60
             if (durationMinutes < 15) {
                 _validationError.value = "Duration must be at least 15 minutes"
                 return@launch
             }
 
-            val today = LocalDate.now()
-            val sessionsToday = sessionRepository.getCompletedSessionsForDate(today)
-            val isFirstSession = sessionsToday.isEmpty() ||
-                sessionsToday.all { it.startTime.isAfter(startTime) }
-
-            val currentStreak = streakManager.getCurrentStreak()
-            val sessionType = pointsCalculator.determineSessionType(startTime)
-
-            val result = pointsCalculator.calculatePoints(
-                startTime = startTime,
-                durationMinutes = durationMinutes,
-                streakDays = currentStreak,
-                isFirstSessionOfDay = isFirstSession && sessionType != SessionType.DAY_JOB
-            )
-
-            val updatedSession = originalSession.copy(
-                startTime = startTime,
-                endTime = endTime,
-                durationMinutes = durationMinutes,
-                pointsEarned = result.points,
-                type = result.sessionType,
-                isPaused = false,
-                pausedAt = null
-            )
-
-            sessionRepository.updateSession(updatedSession)
-            _saveSuccess.value = true
+            try {
+                apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                    startTime = startTime,
+                    endTime = endTime,
+                    isPaused = false
+                ))
+                _saveSuccess.value = true
+            } catch (e: Exception) {
+                _validationError.value = "Failed to stop: ${e.message}"
+            }
         }
     }
 
     fun deleteSession() {
         viewModelScope.launch {
             val session = _session.value ?: return@launch
-            sessionRepository.deleteSession(session)
-            _deleteSuccess.value = true
+            try {
+                apiService.deleteSession(session.id)
+                _deleteSuccess.value = true
+            } catch (e: Exception) {
+                _validationError.value = "Failed to delete: ${e.message}"
+            }
         }
     }
 
@@ -258,12 +246,14 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
             val originalSession = _session.value ?: return@launch
             val editedStart = _editedStartTime.value ?: return@launch
 
-            // Only save if start time was actually changed
-            if (editedStart != originalSession.startTime) {
-                val updatedSession = originalSession.copy(
-                    startTime = editedStart
-                )
-                sessionRepository.updateSession(updatedSession)
+            try {
+                apiService.updateSession(originalSession.id, UpdateSessionRequest(
+                    startTime = if (editedStart != originalSession.startTime) editedStart else null,
+                    isPaused = false
+                ))
+            } catch (e: Exception) {
+                _validationError.value = "Failed to save: ${e.message}"
+                return@launch
             }
             _resumeReady.value = true
         }
@@ -282,7 +272,7 @@ class SessionDetailViewModel(application: Application) : AndroidViewModel(applic
         val startTime = _editedStartTime.value ?: return 0
         val endTime = _editedEndTime.value ?: LocalDateTime.now()
         val session = _session.value ?: return 0
-        return ChronoUnit.MINUTES.between(startTime, endTime) - session.totalPausedMinutes
+        return (ChronoUnit.SECONDS.between(startTime, endTime) - session.totalPausedSeconds) / 60
     }
 }
 
@@ -395,7 +385,6 @@ fun SessionDetailScreen(
                     .padding(paddingValues)
                     .padding(16.dp)
             ) {
-                // Session Type Badge
                 SessionTypeBadge(
                     sessionType = previewSessionType ?: currentSession.type,
                     originalType = currentSession.type
@@ -403,7 +392,6 @@ fun SessionDetailScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Start Time Editor
                 TimeEditorCard(
                     label = "Start Time",
                     dateTime = editedStartTime ?: currentSession.startTime,
@@ -413,7 +401,6 @@ fun SessionDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // End Time Editor
                 if (isRunning) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -450,20 +437,14 @@ fun SessionDetailScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Duration Display
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = "Duration",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
+                        Text(text = "Duration", style = MaterialTheme.typography.bodyLarge)
                         Text(
                             text = FormatUtils.formatDuration(viewModel.getPreviewDuration()),
                             style = MaterialTheme.typography.bodyLarge,
@@ -474,14 +455,12 @@ fun SessionDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Points Preview
                 PointsPreviewCard(
                     originalPoints = currentSession.pointsEarned,
                     previewPoints = previewPoints,
                     sessionType = previewSessionType ?: currentSession.type
                 )
 
-                // Validation Error
                 validationError?.let { error ->
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
@@ -493,7 +472,6 @@ fun SessionDetailScreen(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Action Buttons
                 if (isRunning) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -526,7 +504,6 @@ fun SessionDetailScreen(
         }
     }
 
-    // Delete Confirmation Dialog
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -553,7 +530,6 @@ fun SessionDetailScreen(
         )
     }
 
-    // Date/Time Pickers
     if (showStartDatePicker) {
         val currentDateTime = editedStartTime ?: session?.startTime ?: LocalDateTime.now()
         DatePickerDialog(
@@ -604,10 +580,7 @@ fun SessionDetailScreen(
 }
 
 @Composable
-private fun SessionTypeBadge(
-    sessionType: SessionType,
-    originalType: SessionType
-) {
+private fun SessionTypeBadge(sessionType: SessionType, originalType: SessionType) {
     val color = when (sessionType) {
         SessionType.DAY_JOB -> DayJobColor
         SessionType.SIDE_WORK -> SideWorkColor
@@ -649,9 +622,7 @@ private fun TimeEditorCard(
     onDateClick: () -> Unit,
     onTimeClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -667,18 +638,10 @@ private fun TimeEditorCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Date button
-                OutlinedButton(
-                    onClick = onDateClick,
-                    modifier = Modifier.weight(1f)
-                ) {
+                OutlinedButton(onClick = onDateClick, modifier = Modifier.weight(1f)) {
                     Text(dateTime.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")))
                 }
-                // Time button
-                OutlinedButton(
-                    onClick = onTimeClick,
-                    modifier = Modifier.weight(1f)
-                ) {
+                OutlinedButton(onClick = onTimeClick, modifier = Modifier.weight(1f)) {
                     Text(dateTime.format(DateTimeFormatter.ofPattern("HH:mm")))
                 }
             }
@@ -701,9 +664,7 @@ private fun PointsPreviewCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.1f)
-        )
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f))
     ) {
         Column(
             modifier = Modifier
@@ -777,14 +738,10 @@ private fun DatePickerDialog(
                         onDateSelected(date)
                     }
                 }
-            ) {
-                Text("OK")
-            }
+            ) { Text("OK") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     ) {
         DatePicker(state = datePickerState)
@@ -807,22 +764,16 @@ private fun TimePickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Select Time") },
-        text = {
-            TimePicker(state = timePickerState)
-        },
+        text = { TimePicker(state = timePickerState) },
         confirmButton = {
             TextButton(
                 onClick = {
                     onTimeSelected(LocalTime.of(timePickerState.hour, timePickerState.minute))
                 }
-            ) {
-                Text("OK")
-            }
+            ) { Text("OK") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }

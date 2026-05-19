@@ -1,0 +1,89 @@
+<div class="wishlist-header">
+  <div>
+    <h1 class="page-title">Wish List</h1>
+    <p class="page-subtitle">{{ totalPoints() | formatPoints }} pts available</p>
+  </div>
+  <button mat-button (click)="openAddDialog()" class="add-btn">
+    <span class="material-symbols-rounded">add</span>
+    Add Wish
+  </button>
+</div>
+
+<!-- Tabs -->
+<div class="tab-bar">
+  <button class="tab-btn" [class.active]="selectedTab() === 0" (click)="selectedTab.set(0)">
+    Available ({{ availableItems().length }})
+  </button>
+  <button class="tab-btn" [class.active]="selectedTab() === 1" (click)="selectedTab.set(1)">
+    Redeemed ({{ redeemedItems().length }})
+  </button>
+</div>
+
+@if (loading()) {
+  <div class="grid loading">
+    @for (i of [1,2,3,4,5,6]; track i) {
+      <mat-card class="skeleton-card" style="height: 220px"></mat-card>
+    }
+  </div>
+} @else {
+  @if (selectedTab() === 0) {
+    @if (availableItems().length === 0) {
+      <div class="empty-state">
+        <span class="material-symbols-rounded" style="font-size: 64px; color: var(--color-text-muted)">redeem</span>
+        <p>No wish items yet</p>
+        <p class="empty-sub">Add items you'd like to earn with your points</p>
+      </div>
+    } @else {
+      <div class="grid stagger-enter">
+        @for (item of availableItems(); track item.id) {
+          <mat-card class="wish-card hover-lift" [class.affordable-glow]="canAfford(item)" (click)="goToItem(item.id)">
+            @if (getImageUrl(item.imageUrl)) {
+              <div class="wish-image" [style.background-image]="'url(' + getImageUrl(item.imageUrl) + ')'"></div>
+            } @else {
+              <div class="wish-image placeholder">
+                <span class="material-symbols-rounded">redeem</span>
+              </div>
+            }
+            <div class="wish-body">
+              <span class="wish-name">{{ item.name }}</span>
+              <div class="wish-price-row">
+                <span class="wish-price">{{ item.price | formatPrice }}</span>
+                <span class="wish-points" [class.affordable]="canAfford(item)" [class.expensive]="!canAfford(item)">
+                  {{ getPointsRequired(item.price) | formatPoints }} pts
+                </span>
+              </div>
+            </div>
+          </mat-card>
+        }
+      </div>
+    }
+  } @else {
+    @if (redeemedItems().length === 0) {
+      <div class="empty-state">
+        <span class="material-symbols-rounded" style="font-size: 64px; color: var(--color-text-muted)">check_circle</span>
+        <p>No redeemed items yet</p>
+      </div>
+    } @else {
+      <div class="grid stagger-enter">
+        @for (item of redeemedItems(); track item.id) {
+          <mat-card class="wish-card redeemed" (click)="goToItem(item.id)">
+            @if (getImageUrl(item.imageUrl)) {
+              <div class="wish-image" [style.background-image]="'url(' + getImageUrl(item.imageUrl) + ')'"></div>
+            } @else {
+              <div class="wish-image placeholder">
+                <span class="material-symbols-rounded">redeem</span>
+              </div>
+            }
+            <div class="wish-body">
+              <span class="wish-name">{{ item.name }}</span>
+              <div class="wish-price-row">
+                <span class="wish-price">{{ item.price | formatPrice }}</span>
+                <span class="redeemed-badge">Redeemed</span>
+              </div>
+            </div>
+          </mat-card>
+        }
+      </div>
+    }
+  }
+}

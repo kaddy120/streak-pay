@@ -1,0 +1,219 @@
+@if (loading()) {
+  <div class="dashboard-page">
+    <div class="loading-container">
+      <mat-card class="skeleton-card" style="height: 80px"></mat-card>
+      <mat-card class="skeleton-card" style="height: 200px"></mat-card>
+      <mat-card class="skeleton-card" style="height: 300px"></mat-card>
+    </div>
+  </div>
+} @else {
+  <div class="dashboard-page">
+    <!-- Greeting Header -->
+    <div class="greeting-row">
+      <h1 class="greeting-text">Hi, {{ userName() }}</h1>
+      <div class="total-points-display">
+        <span class="points-value">{{ totalPoints() | formatPoints }}</span>
+        <span class="points-unit">pts</span>
+      </div>
+    </div>
+
+    <!-- Streak Strip -->
+    @if (streak()?.currentStreak) {
+      <div class="streak-strip" [class.at-risk]="streak()?.streakAtRisk">
+        <div class="streak-metric">
+          <span class="streak-number">{{ streak()?.currentStreak }}</span>
+          <div class="streak-label-group">
+            <span class="streak-unit">day streak</span>
+            @if (streak()?.streakAtRisk) {
+              <span class="streak-alert">
+                <span class="material-symbols-rounded">warning</span>
+                At risk
+              </span>
+            }
+          </div>
+        </div>
+        @if (streak()!.gracePeriodHoursRemaining > 0 || streak()!.gracePeriodMinutesRemaining > 0) {
+          <span class="streak-grace">{{ streak()!.gracePeriodHoursRemaining }}h {{ streak()!.gracePeriodMinutesRemaining }}m</span>
+        }
+      </div>
+    }
+
+    <div class="dashboard-stack stagger-enter">
+
+      <!-- Encouragement Card -->
+      @if (motivationalMessage() || badges().length > 0 || nextWishItem()) {
+        <mat-card class="encouragement-card">
+          <mat-card-content>
+            <!-- Motivational Message -->
+            @if (motivationalMessage()) {
+              <p class="motivational-msg">{{ motivationalMessage() }}</p>
+            }
+
+            <!-- Badges -->
+            @if (badges().length > 0) {
+              <div class="badges-section">
+                <span class="section-label">Badges</span>
+                <div class="badges-scroll">
+                  @for (badge of badges(); track badge.name) {
+                    <div class="badge-chip"
+                         [class.highlighted]="isHighlighted(badge)"
+                         [style.background]="getBadgeGradient(badge.name)">
+                      <span class="badge-icon">{{ badge.icon }}</span>
+                      <span class="badge-name">{{ badge.displayName }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+
+            <!-- Wish Progress -->
+            @if (nextWishItem()) {
+              <div class="wish-progress">
+                <span class="wish-emoji">&#127873;</span>
+                <div class="wish-info">
+                  <span class="wish-name">{{ nextWishItem()!.name }}</span>
+                  <mat-progress-bar mode="determinate" [value]="wishProgress() * 100"></mat-progress-bar>
+                </div>
+                <span class="wish-remaining">{{ wishPointsNeeded() | formatPoints }} pts</span>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+
+      <!-- Timer Card -->
+      @if (remoteSession(); as rs) {
+        <!-- Remote Session Timer -->
+        <mat-card class="timer-card remote" (click)="goToSession(rs.id)">
+          <mat-card-content>
+            <div class="timer-header">
+              <span class="timer-title">Remote Session</span>
+              <span class="timer-subtitle">{{ rs.deviceId }} &middot; {{ rs.type | sessionTypeLabel }}</span>
+            </div>
+            <div class="timer-display">{{ fmt.formatElapsedTime(rs.activeElapsedSeconds) }}</div>
+            <div class="timer-actions">
+              @if (rs.isPaused) {
+                <button class="spotify-btn resume" (click)="resumeRemoteSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">play_arrow</span>
+                </button>
+              } @else {
+                <button class="spotify-btn pause" (click)="pauseRemoteSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">pause</span>
+                </button>
+              }
+              <button class="spotify-btn stop" (click)="stopRemoteSession(); $event.stopPropagation()">
+                <span class="material-symbols-rounded">stop</span>
+              </button>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      } @else {
+        <!-- Local Timer -->
+        <mat-card class="timer-card" [class.running]="timer.running() && !timer.paused()" [class.clickable]="currentSessionId()" (click)="currentSessionId() ? goToSession(currentSessionId()!) : null">
+          <mat-card-content>
+            <div class="timer-header">
+              <span class="timer-title">Current Session</span>
+              @if (currentSessionId()) {
+                <span class="timer-subtitle">Tap to edit</span>
+              }
+            </div>
+            <div class="timer-display">{{ timer.formattedElapsed() }}</div>
+            <div class="timer-actions">
+              @if (!timer.running() && !timer.paused()) {
+                <button class="spotify-btn start primary" (click)="startSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">play_arrow</span>
+                </button>
+              } @else if (timer.running() && !timer.paused()) {
+                <button class="spotify-btn pause" (click)="pauseSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">pause</span>
+                </button>
+                <button class="spotify-btn stop" (click)="stopSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">stop</span>
+                </button>
+              } @else if (timer.paused()) {
+                <button class="spotify-btn resume" (click)="resumeSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">play_arrow</span>
+                </button>
+                <button class="spotify-btn stop" (click)="stopSession(); $event.stopPropagation()">
+                  <span class="material-symbols-rounded">stop</span>
+                </button>
+              }
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
+
+      <!-- Device Status Panel -->
+      @if (devices().length > 0) {
+        <mat-card class="devices-card">
+          <mat-card-content>
+            <h3 class="section-title">
+              <span class="material-symbols-rounded">devices</span>
+              Connected Devices
+            </h3>
+            <div class="devices-list">
+              @for (device of devices(); track device.deviceId) {
+                <div class="device-row">
+                  <div class="device-info">
+                    <span class="device-dot" [style.background]="getDeviceStateColor(device.state)"></span>
+                    <div>
+                      <span class="device-name">{{ device.deviceId }}</span>
+                      <span class="device-detail">{{ getDeviceStateLabel(device.state) }}
+                        @if (device.currentApp) {
+                          &middot; {{ device.currentApp }}
+                        }
+                      </span>
+                    </div>
+                  </div>
+                  @if (device.state === 'ACTIVE' || device.state === 'PAUSED') {
+                    <span class="device-elapsed">{{ fmt.formatElapsedTime(device.elapsedSeconds) }}</span>
+                  }
+                </div>
+              }
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
+
+      <!-- Recent Sessions -->
+      <mat-card class="sessions-card">
+        <mat-card-content>
+          <h3 class="section-title">
+            <span class="material-symbols-rounded">history</span>
+            Recent Sessions
+          </h3>
+          @if (recentSessions().length === 0) {
+            <p class="empty-text">No sessions yet. Start your first session!</p>
+          } @else {
+            <div class="sessions-list">
+              @for (session of recentSessions(); track session.id) {
+                <div class="session-row" (click)="goToSession(session.id)"
+                     [style.border-left-color]="getSessionColor(session.type)">
+                  <div class="session-info">
+                    <span class="session-date">{{ fmt.formatDate(session.startTime) }}</span>
+                    <span class="session-time">
+                      {{ fmt.formatTime(session.startTime) }}
+                      @if (session.endTime) {
+                        - {{ fmt.formatTime(session.endTime) }}
+                      } @else {
+                        - In Progress
+                      }
+                    </span>
+                    <span class="session-duration">{{ session.durationMinutes | formatDuration }}</span>
+                  </div>
+                  <div class="session-points">
+                    <span class="points-earned" [style.color]="getSessionColor(session.type)">
+                      +{{ session.pointsEarned | formatPoints }}
+                    </span>
+                    <span class="session-type-label">{{ session.type | sessionTypeLabel }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+    </div>
+  </div>
+}

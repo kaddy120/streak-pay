@@ -1,0 +1,74 @@
+<div class="badges-page">
+  <h1 class="page-title">Badges & Points</h1>
+
+  <div class="badges-layout stagger-enter">
+    <!-- Point System -->
+    <mat-card class="info-card points-card">
+      <mat-card-content>
+        <h3 class="card-title">
+          <span class="material-symbols-rounded">info</span>
+          Point System
+        </h3>
+        <div class="rates-list">
+          @for (rate of pointRates; track rate.type) {
+            <div class="rate-row">
+              <div class="rate-icon-wrap" [style.background]="rate.color + '20'">
+                <span class="material-symbols-rounded" [style.color]="rate.color">{{ rate.icon }}</span>
+              </div>
+              <div class="rate-info">
+                <span class="rate-type">{{ rate.type }}</span>
+                <span class="rate-time">{{ rate.time }}</span>
+              </div>
+              <span class="rate-value" [style.color]="rate.color">{{ rate.rate }} pts/hr</span>
+            </div>
+          }
+        </div>
+        <div class="bonus-note">
+          <span class="material-symbols-rounded" style="font-size: 18px">add_circle</span>
+          First hour bonus: <strong>+{{ 0.5 }} pts</strong> (Side Work & Early Morning only)
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Streak Bonuses -->
+    <mat-card class="info-card streaks-card">
+      <mat-card-content>
+        <h3 class="card-title">
+          <span class="material-symbols-rounded">bolt</span>
+          Streak Bonuses
+        </h3>
+        <div class="bonuses-compact">
+          @for (bonus of streakBonuses; track bonus.minDays) {
+            <div class="bonus-item">
+              <span class="bonus-days">{{ bonus.minDays }}+ days</span>
+              <span class="bonus-arrow">&rarr;</span>
+              <span class="bonus-pct">+{{ bonus.percentage }}%</span>
+            </div>
+          }
+        </div>
+        <p class="bonus-sub">Bonus applies to Side Work & Early Morning sessions only</p>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <!-- All Badges -->
+  <h2 class="section-heading">All Badges</h2>
+  <div class="badges-grid stagger-enter">
+    @for (badge of allBadges; track badge.name) {
+      <mat-card class="badge-showcase shimmer-on-hover" [class.earned]="isEarned(badge.name)" [class.unearned]="!isEarned(badge.name)">
+        <mat-card-content>
+          <div class="badge-icon-box" [style.background]="getBadgeGradient(badge.name)">
+            <span class="badge-emoji">{{ badge.icon }}</span>
+          </div>
+          <div class="badge-info">
+            <span class="badge-name">{{ badge.displayName }}</span>
+            <span class="badge-desc">{{ badge.description }}</span>
+            <span class="badge-tag" [class.permanent]="badge.isPermanent">
+              {{ badge.isPermanent ? 'Permanent' : 'Active' }}
+            </span>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    }
+  </div>
+</div>

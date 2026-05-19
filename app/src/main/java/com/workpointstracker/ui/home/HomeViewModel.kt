@@ -6,44 +6,31 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.workpointstracker.data.local.database.WorkPointsDatabase
+import com.workpointstracker.WorkPointsApplication
 import com.workpointstracker.data.model.Session
+import com.workpointstracker.data.model.SessionType
 import com.workpointstracker.data.model.WishItem
-import com.workpointstracker.data.repository.SessionRepository
-import com.workpointstracker.data.repository.SettingsRepository
-import com.workpointstracker.data.repository.WishItemRepository
+import com.workpointstracker.data.remote.*
 import com.workpointstracker.domain.service.TimerService
-import com.workpointstracker.domain.usecase.Badge
-import com.workpointstracker.domain.usecase.BadgeCalculator
-import com.workpointstracker.domain.usecase.PointsCalculator
-import com.workpointstracker.domain.usecase.StreakInfo
-import com.workpointstracker.domain.usecase.StreakManager
 import com.workpointstracker.util.FormatUtils
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.LocalDateTime
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = WorkPointsDatabase.getDatabase(application)
-    private val sessionRepository = SessionRepository(database.sessionDao())
-    private val settingsRepository = SettingsRepository(
-        database.appSettingsDao(),
-        database.dailyGoalDao()
-    )
-    private val wishItemRepository = WishItemRepository(database.wishItemDao())
-
-    private val pointsCalculator = PointsCalculator()
-    private val streakManager = StreakManager(settingsRepository)
-    private val badgeCalculator = BadgeCalculator()
+    private val app = application as WorkPointsApplication
+    private val apiService = app.apiService
+    private val sseClient = app.sseClient
 
     private var timerService: TimerService? = null
     private var serviceBound = false
@@ -66,23 +53,40 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _encouragementData = MutableStateFlow(EncouragementData())
     val encouragementData: StateFlow<EncouragementData> = _encouragementData
 
-    val totalPoints = sessionRepository.getTotalPoints()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    // API session ID (same as currentSessionId now - no local Room ID)
+    private val _apiSessionId = MutableStateFlow<Long?>(null)
 
-    val recentSessions = sessionRepository.getRecentSessions()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // Remote session state
+    private val _remoteSession = MutableStateFlow<SessionResponse?>(null)
+    val remoteSession: StateFlow<SessionResponse?> = _remoteSession
+    private val _remoteElapsedSeconds = MutableStateFlow(0L)
+    val remoteElapsedSeconds: StateFlow<Long> = _remoteElapsedSeconds
+    private var remoteTickJob: Job? = null
 
-    val appSettings = settingsRepository.getAppSettings()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    private val _totalPoints = MutableStateFlow<Double?>(0.0)
+    val totalPoints: StateFlow<Double?> = _totalPoints
+
+    private val _currentStreak = MutableStateFlow(0)
+
+    private val _recentSessions = MutableStateFlow<List<Session>>(emptyList())
+    val recentSessions: StateFlow<List<Session>> = _recentSessions
+
+    private val _userName = MutableStateFlow("Kaddy")
+
+    private val _isStarting = MutableStateFlow(false)
+    val isStarting: StateFlow<Boolean> = _isStarting
+
+    val connectionState = sseClient.connectionState
 
     val uiState = combine(
         totalPoints,
-        appSettings
-    ) { points, settings ->
+        _currentStreak,
+        _userName
+    ) { points, streak, name ->
         HomeUiState(
             totalPoints = points ?: 0.0,
-            currentStreak = settings?.currentStreak ?: 0,
-            userName = settings?.userName ?: "Kaddy"
+            currentStreak = streak,
+            userName = name
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
@@ -106,27 +110,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             _timerRunning.value = true
                             _timerPaused.value = false
                             _timerElapsedSeconds.value = state.elapsedSeconds
-                            // Sync session ID: prefer local value, fallback to service value
-                            val serviceSessionId = timerService?.getCurrentSessionId()
-                            if (_currentSessionId.value != null && serviceSessionId == null) {
-                                timerService?.setCurrentSessionId(_currentSessionId.value!!)
-                            } else if (serviceSessionId != null) {
-                                _currentSessionId.value = serviceSessionId
-                            }
-                            updateCanStopTimer(state.elapsedSeconds)
+                            syncSessionId()
+                            _canStopTimer.value = true
                         }
                         is TimerService.TimerState.Paused -> {
                             _timerRunning.value = false
                             _timerPaused.value = true
                             _timerElapsedSeconds.value = state.elapsedSeconds
-                            // Sync session ID: prefer local value, fallback to service value
-                            val serviceSessionId = timerService?.getCurrentSessionId()
-                            if (_currentSessionId.value != null && serviceSessionId == null) {
-                                timerService?.setCurrentSessionId(_currentSessionId.value!!)
-                            } else if (serviceSessionId != null) {
-                                _currentSessionId.value = serviceSessionId
-                            }
-                            updateCanStopTimer(state.elapsedSeconds)
+                            syncSessionId()
+                            _canStopTimer.value = true
                         }
                     }
                 }
@@ -141,55 +133,216 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         bindTimerService()
-        initializeDefaultSettings()
-        refreshEncouragementData()
+        recoverSession()
+        viewModelScope.launch {
+            fetchDashboard()
+        }
+        subscribeSseEvents()
+    }
+
+    private fun syncSessionId() {
+        val serviceSessionId = timerService?.getCurrentSessionId()
+        if (_currentSessionId.value != null && serviceSessionId == null) {
+            timerService?.setCurrentSessionId(_currentSessionId.value!!)
+        } else if (serviceSessionId != null) {
+            _currentSessionId.value = serviceSessionId
+            _apiSessionId.value = serviceSessionId
+        }
+    }
+
+    private fun recoverSession() {
+        val prefs = getApplication<Application>().getSharedPreferences("timer_prefs", Context.MODE_PRIVATE)
+        val savedSessionId = prefs.getLong("active_session_id", -1L)
+        if (savedSessionId > 0) {
+            viewModelScope.launch {
+                try {
+                    val session = apiService.getSession(savedSessionId)
+                    if (session.endTime == null) {
+                        _apiSessionId.value = session.id
+                        _currentSessionId.value = session.id
+                    } else {
+                        // Session already ended, clear prefs
+                        prefs.edit().remove("active_session_id").apply()
+                    }
+                } catch (e: Exception) {
+                    prefs.edit().remove("active_session_id").apply()
+                }
+            }
+        }
     }
 
     fun syncTimerStartTimeFromDatabase() {
         viewModelScope.launch {
             val service = timerService ?: return@launch
-            val sessionId = service.getCurrentSessionId() ?: return@launch
-            val session = sessionRepository.getSessionById(sessionId) ?: return@launch
-            val serviceStartTime = service.getStartTime() ?: return@launch
+            val sessionId = _apiSessionId.value ?: return@launch
+            try {
+                val session = apiService.getSession(sessionId)
+                val shouldResume = !session.isPaused && _timerPaused.value
 
-            // If the database has a different start time, update the service
-            if (session.startTime != serviceStartTime) {
-                service.setStartTime(session.startTime)
+                service.syncFromApi(
+                    activeElapsedSeconds = session.activeElapsedSeconds,
+                    shouldResume = shouldResume
+                )
+            } catch (_: Exception) { }
+        }
+    }
+
+    private suspend fun fetchDashboard() {
+        try {
+            val dashboard = apiService.getDashboard()
+            _totalPoints.value = dashboard.totalPoints
+            _currentStreak.value = dashboard.streak.currentStreak
+            _userName.value = dashboard.userName.ifEmpty { "Kaddy" }
+            _recentSessions.value = dashboard.recentSessions.map { it.toLocalSession() }
+
+            // Update encouragement data from badges
+            val badges = dashboard.badges
+            val availableItems = try {
+                apiService.getWishItems("available").map { it.toLocalWishItem() }
+            } catch (_: Exception) { emptyList() }
+            val nextWishItem = findNextAffordableWishItem(availableItems, dashboard.totalPoints)
+
+            _encouragementData.value = EncouragementData(
+                streakInfo = dashboard.streak,
+                motivationalMessage = badges.motivationalMessage,
+                badges = badges.badges,
+                highlightedBadges = badges.highlightedBadges,
+                nextWishItem = nextWishItem,
+                pointsToNextWishItem = nextWishItem?.let {
+                    (FormatUtils.priceToPoints(it.price) - dashboard.totalPoints).coerceAtLeast(0.0)
+                }
+            )
+
+            // Check for remote sessions
+            val remoteSessions = dashboard.activeSessions.filter { it.deviceId != "android" }
+            val active = remoteSessions.firstOrNull()
+            _remoteSession.value = active
+            if (active != null) {
+                _remoteElapsedSeconds.value = active.activeElapsedSeconds
+                ensureRemoteTickRunning(active)
+            } else {
+                stopRemoteTick()
+                _remoteElapsedSeconds.value = 0
             }
+        } catch (e: Exception) {
+            Log.w("HomeVM", "Dashboard fetch failed", e)
+            // Fallback: individual calls
+            try { _totalPoints.value = apiService.getTotalPoints().totalPoints } catch (_: Exception) {}
+            try { _currentStreak.value = apiService.getStreakInfo().currentStreak } catch (_: Exception) {}
+            try { _userName.value = apiService.getSettings().userName.ifEmpty { "Kaddy" } } catch (_: Exception) {}
+            try {
+                _recentSessions.value = apiService.getSessions()
+                    .filter { it.endTime != null }
+                    .sortedByDescending { it.startTime }
+                    .take(10)
+                    .map { it.toLocalSession() }
+            } catch (_: Exception) {}
         }
     }
 
     fun refreshEncouragementData() {
         viewModelScope.launch {
-            val streakInfo = streakManager.getStreakInfo()
-            val points = totalPoints.first() ?: 0.0
-            val allSessions = sessionRepository.getAllCompletedSessions().first()
-            val badges = badgeCalculator.calculateEarnedBadges(allSessions, streakInfo.currentStreak, points)
-            val highlightedBadges = badgeCalculator.getHighlightedBadges(badges)
-            val message = streakManager.getMotivationalMessage(streakInfo, badges)
+            try {
+                val badges = apiService.getBadges()
+                val streak = try { apiService.getStreakInfo() } catch (_: Exception) { null }
+                val points = totalPoints.value ?: 0.0
+                val availableItems = try {
+                    apiService.getWishItems("available").map { it.toLocalWishItem() }
+                } catch (_: Exception) { emptyList() }
+                val nextWishItem = findNextAffordableWishItem(availableItems, points)
 
-            // Get next affordable wish item
-            val availableWishItems = wishItemRepository.getAvailableWishItems().first()
-            val nextWishItem = findNextAffordableWishItem(availableWishItems, points)
-
-            _encouragementData.value = EncouragementData(
-                streakInfo = streakInfo,
-                badges = badges,
-                highlightedBadges = highlightedBadges,
-                motivationalMessage = message,
-                nextWishItem = nextWishItem,
-                pointsToNextWishItem = nextWishItem?.let {
-                    (FormatUtils.priceToPoints(it.price) - points).coerceAtLeast(0.0)
-                }
-            )
+                _encouragementData.value = EncouragementData(
+                    streakInfo = streak ?: _encouragementData.value.streakInfo,
+                    motivationalMessage = badges.motivationalMessage,
+                    badges = badges.badges,
+                    highlightedBadges = badges.highlightedBadges,
+                    nextWishItem = nextWishItem,
+                    pointsToNextWishItem = nextWishItem?.let {
+                        (FormatUtils.priceToPoints(it.price) - points).coerceAtLeast(0.0)
+                    }
+                )
+            } catch (e: Exception) {
+                Log.w("HomeVM", "Badges fetch failed", e)
+            }
         }
     }
 
     private fun findNextAffordableWishItem(items: List<WishItem>, currentPoints: Double): WishItem? {
-        // Find the item that requires the least additional points
         return items
             .filter { !it.isRedeemed }
             .minByOrNull { FormatUtils.priceToPoints(it.price) - currentPoints }
+    }
+
+    private fun subscribeSseEvents() {
+        viewModelScope.launch {
+            sseClient.events.collect { event ->
+                when (event) {
+                    is SseEvent.SessionCreated -> {
+                        if (event.session.deviceId != "android") {
+                            _remoteSession.value = event.session
+                            _remoteElapsedSeconds.value = event.session.activeElapsedSeconds
+                            ensureRemoteTickRunning(event.session)
+                        }
+                    }
+                    is SseEvent.SessionUpdated -> {
+                        if (event.session.deviceId != "android") {
+                            _remoteSession.value = event.session
+                            _remoteElapsedSeconds.value = event.session.activeElapsedSeconds
+                            if (event.session.endTime != null) {
+                                _remoteSession.value = null
+                                _remoteElapsedSeconds.value = 0
+                                stopRemoteTick()
+                            } else {
+                                ensureRemoteTickRunning(event.session)
+                            }
+                        }
+                        // Refresh recent sessions on any update
+                        refreshRecentSessions()
+                    }
+                    is SseEvent.SessionDeleted -> {
+                        val remote = _remoteSession.value
+                        if (remote != null && remote.id == event.id) {
+                            _remoteSession.value = null
+                            _remoteElapsedSeconds.value = 0
+                            stopRemoteTick()
+                        }
+                        refreshRecentSessions()
+                    }
+                    is SseEvent.StatsUpdated -> {
+                        _totalPoints.value = event.totalPoints
+                        _currentStreak.value = event.streak.currentStreak
+                        refreshEncouragementData()
+                    }
+                    is SseEvent.SettingsUpdated -> {
+                        try { _userName.value = apiService.getSettings().userName.ifEmpty { "Kaddy" } } catch (_: Exception) {}
+                    }
+                    is SseEvent.Heartbeat -> { /* keepalive */ }
+                    is SseEvent.WishItemCreated, is SseEvent.WishItemUpdated, is SseEvent.WishItemDeleted -> {
+                        // Wish list changes may affect encouragement data
+                        refreshEncouragementData()
+                    }
+                }
+            }
+        }
+
+        // Full refresh on SSE reconnect
+        viewModelScope.launch {
+            sseClient.connectionState.collect { state ->
+                if (state == ConnectionState.CONNECTED) {
+                    fetchDashboard()
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshRecentSessions() {
+        try {
+            _recentSessions.value = apiService.getSessions()
+                .filter { it.endTime != null }
+                .sortedByDescending { it.startTime }
+                .take(10)
+                .map { it.toLocalSession() }
+        } catch (_: Exception) {}
     }
 
     private fun bindTimerService() {
@@ -197,197 +350,190 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
-    private fun initializeDefaultSettings() {
-        viewModelScope.launch {
-            val settings = settingsRepository.getAppSettingsOnce()
-            if (settings == null) {
-                settingsRepository.insertAppSettings(
-                    com.workpointstracker.data.model.AppSettings(userName = "Kaddy")
-                )
-            }
-
-            val goal = settingsRepository.getDailyGoalOnce()
-            if (goal == null) {
-                settingsRepository.insertDailyGoal(
-                    com.workpointstracker.data.model.DailyGoal()
-                )
-            }
-        }
-    }
-
     fun startTimer() {
+        if (_isStarting.value) return
+        _isStarting.value = true
+
         viewModelScope.launch {
-            // Create session in database first
-            val startTime = LocalDateTime.now()
-            val sessionType = pointsCalculator.determineSessionType(startTime)
+            try {
+                val startTime = LocalDateTime.now()
+                val pointsCalculator = com.workpointstracker.shared.PointsCalculator()
+                val sharedType = pointsCalculator.determineSessionType(startTime)
 
-            val session = Session(
-                startTime = startTime,
-                endTime = null,
-                durationMinutes = 0,
-                pointsEarned = 0.0,
-                type = sessionType,
-                isPaused = false
-            )
+                val apiResponse = apiService.createSession(
+                    CreateSessionRequest(deviceId = "android", startTime = startTime, type = sharedType)
+                )
+                _apiSessionId.value = apiResponse.id
+                _currentSessionId.value = apiResponse.id
 
-            val sessionId = sessionRepository.insertSession(session)
+                // Persist session ID to SharedPreferences
+                getApplication<Application>().getSharedPreferences("timer_prefs", Context.MODE_PRIVATE)
+                    .edit().putLong("active_session_id", apiResponse.id).apply()
 
-            // Start the timer service
-            val intent = Intent(getApplication(), TimerService::class.java).apply {
-                action = TimerService.ACTION_START
+                // Start the timer service
+                val intent = Intent(getApplication(), TimerService::class.java).apply {
+                    action = TimerService.ACTION_START
+                }
+                getApplication<Application>().startService(intent)
+                timerService?.setCurrentSessionId(apiResponse.id)
+            } catch (e: Exception) {
+                Log.e("HomeVM", "Failed to create session", e)
+            } finally {
+                _isStarting.value = false
             }
-            getApplication<Application>().startService(intent)
-
-            // Set the session ID in the service after it starts
-            timerService?.setCurrentSessionId(sessionId)
-            _currentSessionId.value = sessionId
         }
     }
 
     fun pauseTimer() {
         timerService?.pauseTimer()
+        val pausedAt = LocalDateTime.now()
         viewModelScope.launch {
-            val sessionId = _currentSessionId.value ?: return@launch
-            val session = sessionRepository.getSessionById(sessionId) ?: return@launch
-            val updatedSession = session.copy(
-                isPaused = true,
-                pausedAt = LocalDateTime.now()
-            )
-            sessionRepository.updateSession(updatedSession)
+            val apiId = _apiSessionId.value ?: return@launch
+            try {
+                val updated = apiService.updateSession(apiId, UpdateSessionRequest(
+                    isPaused = true,
+                    pausedAt = pausedAt
+                ))
+                timerService?.syncFromApi(
+                    activeElapsedSeconds = updated.activeElapsedSeconds,
+                    shouldResume = false
+                )
+            } catch (_: Exception) { }
         }
     }
 
     fun resumeTimer() {
-        timerService?.resumeTimer()
+        timerService?.resumeTimer()  // Resume instantly for responsive UX
         viewModelScope.launch {
-            val sessionId = _currentSessionId.value ?: return@launch
-            val session = sessionRepository.getSessionById(sessionId) ?: return@launch
-            val pausedAt = session.pausedAt
-            val additionalPausedMinutes = if (pausedAt != null) {
-                java.time.temporal.ChronoUnit.MINUTES.between(pausedAt, LocalDateTime.now())
-            } else 0L
-            val updatedSession = session.copy(
-                isPaused = false,
-                pausedAt = null,
-                totalPausedMinutes = session.totalPausedMinutes + additionalPausedMinutes
-            )
-            sessionRepository.updateSession(updatedSession)
+            val apiId = _apiSessionId.value ?: return@launch
+            try {
+                val updated = apiService.updateSession(apiId, UpdateSessionRequest(isPaused = false))
+                timerService?.syncFromApi(
+                    activeElapsedSeconds = updated.activeElapsedSeconds,
+                    shouldResume = false
+                )
+            } catch (_: Exception) { }
         }
     }
 
     fun stopTimer() {
         val service = timerService ?: return
-        val sessionId = service.getCurrentSessionId()
-        val elapsedSeconds = service.stopTimer()
-        val serviceStartTime = service.getStartTime() ?: return
-        val totalPausedSeconds = service.getTotalPausedSeconds()
+        service.stopTimer()
 
         viewModelScope.launch {
-            // Get start time from database (may have been edited) or fall back to service time
-            val startTime = if (sessionId != null) {
-                sessionRepository.getSessionById(sessionId)?.startTime ?: serviceStartTime
-            } else {
-                serviceStartTime
-            }
+            val apiId = _apiSessionId.value
+            _apiSessionId.value = null
 
-            // Recalculate elapsed seconds based on potentially edited start time
-            val now = java.time.LocalDateTime.now()
-            val actualElapsedSeconds = java.time.temporal.ChronoUnit.SECONDS.between(startTime, now) - totalPausedSeconds
+            // Clear saved session ID
+            getApplication<Application>().getSharedPreferences("timer_prefs", Context.MODE_PRIVATE)
+                .edit().remove("active_session_id").apply()
 
-            saveSession(sessionId, startTime, actualElapsedSeconds, totalPausedSeconds)
-        }
-    }
-
-    private suspend fun saveSession(
-        sessionId: Long?,
-        startTime: LocalDateTime,
-        elapsedSeconds: Long,
-        totalPausedSeconds: Long
-    ) {
-        val durationMinutes = elapsedSeconds / 60
-
-        // Minimum 15 minutes - discard shorter sessions
-        if (durationMinutes < 15) {
-            sessionId?.let { id ->
-                sessionRepository.getSessionById(id)?.let { session ->
-                    sessionRepository.deleteSession(session)
+            if (apiId != null) {
+                try {
+                    apiService.updateSession(apiId, UpdateSessionRequest(
+                        endTime = LocalDateTime.now(),
+                        isPaused = false
+                    ))
+                } catch (e: Exception) {
+                    Log.w("HomeVM", "API end session failed", e)
                 }
             }
-            return
+
+            // SSE will trigger stats/session refresh, but also fetch proactively
+            fetchDashboard()
+            refreshEncouragementData()
         }
-
-        val today = LocalDate.now()
-        val completedSessionsToday = sessionRepository.getCompletedSessionsCountForDate(today)
-        val isFirstSessionOfDay = completedSessionsToday == 0
-
-        val currentStreak = streakManager.getCurrentStreak()
-        val calculationResult = pointsCalculator.calculatePoints(
-            startTime = startTime,
-            durationMinutes = durationMinutes,
-            streakDays = currentStreak,
-            isFirstSessionOfDay = isFirstSessionOfDay
-        )
-
-        val endTime = LocalDateTime.now()
-        val totalPausedMinutes = totalPausedSeconds / 60
-
-        if (sessionId != null) {
-            // Update existing session
-            val existingSession = sessionRepository.getSessionById(sessionId)
-            if (existingSession != null) {
-                val updatedSession = existingSession.copy(
-                    startTime = startTime,
-                    endTime = endTime,
-                    durationMinutes = durationMinutes,
-                    pointsEarned = calculationResult.points,
-                    type = calculationResult.sessionType,
-                    isPaused = false,
-                    pausedAt = null,
-                    totalPausedMinutes = totalPausedMinutes
-                )
-                sessionRepository.updateSession(updatedSession)
-            }
-        } else {
-            // Fallback: create new session if ID is not available
-            val session = Session(
-                startTime = startTime,
-                endTime = endTime,
-                durationMinutes = durationMinutes,
-                pointsEarned = calculationResult.points,
-                type = calculationResult.sessionType,
-                isPaused = false,
-                totalPausedMinutes = totalPausedMinutes
-            )
-            sessionRepository.insertSession(session)
-        }
-
-        // Check if streak should be updated (only for qualifying sessions)
-        if (calculationResult.sessionType != com.workpointstracker.data.model.SessionType.DAY_JOB) {
-            // Get total qualifying minutes for today (session already saved, so it's included)
-            val totalQualifyingMinutes = sessionRepository.getTotalQualifyingMinutesForDate(today)
-
-            // Only update streak and grace period if daily threshold (60 min) is met
-            if (totalQualifyingMinutes >= 60) {
-                streakManager.updateStreak(today, endTime)
-            }
-        }
-
-        // Refresh encouragement data after session completion
-        refreshEncouragementData()
     }
 
-    private fun updateCanStopTimer(elapsedSeconds: Long) {
-        // Stop button is always enabled - sessions under 15 minutes will be discarded
-        _canStopTimer.value = true
+    // Remote session control
+
+    private fun ensureRemoteTickRunning(session: SessionResponse) {
+        if (session.isPaused) {
+            stopRemoteTick()
+            return
+        }
+        if (remoteTickJob?.isActive == true) return
+        remoteTickJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                _remoteElapsedSeconds.value += 1
+            }
+        }
+    }
+
+    private fun stopRemoteTick() {
+        remoteTickJob?.cancel()
+        remoteTickJob = null
+    }
+
+    fun pauseRemoteSession() {
+        val session = _remoteSession.value ?: return
+        viewModelScope.launch {
+            try {
+                val updated = apiService.updateSession(session.id, UpdateSessionRequest(isPaused = true))
+                _remoteSession.value = updated
+                _remoteElapsedSeconds.value = updated.activeElapsedSeconds
+                stopRemoteTick()
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun resumeRemoteSession() {
+        val session = _remoteSession.value ?: return
+        viewModelScope.launch {
+            try {
+                val updated = apiService.updateSession(session.id, UpdateSessionRequest(isPaused = false))
+                _remoteSession.value = updated
+                _remoteElapsedSeconds.value = updated.activeElapsedSeconds
+                ensureRemoteTickRunning(updated)
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun stopRemoteSession() {
+        val session = _remoteSession.value ?: return
+        viewModelScope.launch {
+            try {
+                apiService.updateSession(session.id, UpdateSessionRequest(
+                    endTime = LocalDateTime.now(),
+                    isPaused = false
+                ))
+                _remoteSession.value = null
+                _remoteElapsedSeconds.value = 0
+                stopRemoteTick()
+            } catch (_: Exception) { }
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
+        stopRemoteTick()
         if (serviceBound) {
             getApplication<Application>().unbindService(serviceConnection)
             serviceBound = false
         }
     }
+
+    private fun SessionResponse.toLocalSession() = Session(
+        id = id,
+        startTime = startTime,
+        endTime = endTime,
+        durationMinutes = durationMinutes,
+        pointsEarned = pointsEarned,
+        type = SessionType.valueOf(type.name),
+        isPaused = isPaused,
+        pausedAt = pausedAt,
+        totalPausedSeconds = totalPausedSeconds
+    )
+
+    private fun WishItemResponse.toLocalWishItem() = WishItem(
+        id = id,
+        name = name,
+        price = price,
+        imageUrl = imageUrl,
+        isRedeemed = isRedeemed,
+        redeemedDate = redeemedDate?.atStartOfDay()
+    )
 }
 
 data class HomeUiState(
@@ -397,10 +543,10 @@ data class HomeUiState(
 )
 
 data class EncouragementData(
-    val streakInfo: StreakInfo? = null,
-    val badges: List<Badge> = emptyList(),
-    val highlightedBadges: List<Badge> = emptyList(),
+    val streakInfo: StreakResponse? = null,
     val motivationalMessage: String = "",
+    val badges: List<BadgesResponse.BadgeDto> = emptyList(),
+    val highlightedBadges: List<BadgesResponse.BadgeDto> = emptyList(),
     val nextWishItem: WishItem? = null,
     val pointsToNextWishItem: Double? = null
 )

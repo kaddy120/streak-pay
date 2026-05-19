@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+
 import com.workpointstracker.ui.about.AboutScreen
 import com.workpointstracker.ui.history.HistoryScreen
 import com.workpointstracker.ui.home.HomeScreen
@@ -45,7 +46,9 @@ fun NavGraph(navController: NavHostController) {
         }
         composable(
             route = Screen.SessionDetail.route,
-            arguments = listOf(navArgument("sessionId") { type = NavType.LongType })
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.LongType }
+            )
         ) { backStackEntry ->
             val sessionId = backStackEntry.arguments?.getLong("sessionId") ?: 0L
             SessionDetailScreen(

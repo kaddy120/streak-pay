@@ -2,6 +2,7 @@ package com.workpointstracker.ui.wish
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -28,24 +29,24 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
-import com.workpointstracker.data.local.database.WorkPointsDatabase
+import com.workpointstracker.BuildConfig
+import com.workpointstracker.WorkPointsApplication
 import com.workpointstracker.data.model.WishItem
-import com.workpointstracker.data.repository.SessionRepository
-import com.workpointstracker.data.repository.WishItemRepository
+import com.workpointstracker.data.remote.ApiService
+import com.workpointstracker.data.remote.UpdateWishItemRequest
 import com.workpointstracker.util.FormatUtils
-import com.workpointstracker.util.ImageUtils
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
 
 class WishItemDetailViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val database = WorkPointsDatabase.getDatabase(application)
-    private val wishItemRepository = WishItemRepository(database.wishItemDao())
-    private val sessionRepository = SessionRepository(database.sessionDao())
+    private val apiService: ApiService = (application as WorkPointsApplication).apiService
 
     private val _wishItem = MutableStateFlow<WishItem?>(null)
     val wishItem: StateFlow<WishItem?> = _wishItem
@@ -68,16 +69,32 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
     private val _deleteSuccess = MutableStateFlow(false)
     val deleteSuccess: StateFlow<Boolean> = _deleteSuccess
 
-    val totalPoints = sessionRepository.getTotalPoints()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    private val _totalPoints = MutableStateFlow<Double?>(0.0)
+    val totalPoints: StateFlow<Double?> = _totalPoints
+
+    init {
+        viewModelScope.launch {
+            try { _totalPoints.value = apiService.getTotalPoints().totalPoints } catch (_: Exception) {}
+        }
+    }
 
     fun loadWishItem(itemId: Long) {
         viewModelScope.launch {
-            val item = wishItemRepository.getWishItemById(itemId)
-            _wishItem.value = item
-            item?.let {
-                _editedName.value = it.name
-                _editedPrice.value = it.price.toString()
+            try {
+                val resp = apiService.getWishItem(itemId)
+                val item = WishItem(
+                    id = resp.id,
+                    name = resp.name,
+                    price = resp.price,
+                    imageUrl = resp.imageUrl,
+                    isRedeemed = resp.isRedeemed,
+                    redeemedDate = resp.redeemedDate?.atStartOfDay()
+                )
+                _wishItem.value = item
+                _editedName.value = item.name
+                _editedPrice.value = item.price.toString()
+            } catch (e: Exception) {
+                Log.w("WishDetailVM", "Failed to load wish item", e)
             }
         }
     }
@@ -89,7 +106,6 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
 
     fun cancelEditMode() {
         _isEditMode.value = false
-        // Reset to original values
         _wishItem.value?.let {
             _editedName.value = it.name
             _editedPrice.value = it.price.toString()
@@ -120,38 +136,42 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
             val item = _wishItem.value ?: return@launch
             val newPrice = _editedPrice.value.toDoubleOrNull() ?: return@launch
 
-            var imagePath = item.imagePath
+            var imageUrl = item.imageUrl
 
-            // If a new image was selected, save it and delete the old one
+            // If a new image was selected, upload it
             _newImageUri.value?.let { uri ->
-                val newPath = ImageUtils.saveImageToInternalStorage(getApplication(), uri)
-                if (newPath != null) {
-                    // Delete old image
-                    ImageUtils.deleteImage(getApplication(), item.imagePath)
-                    imagePath = newPath
+                val newUrl = uploadImage(uri)
+                if (newUrl != null) {
+                    imageUrl = newUrl
                 }
             }
 
-            val updatedItem = item.copy(
-                name = _editedName.value.trim(),
-                price = newPrice,
-                imagePath = imagePath
-            )
-
-            wishItemRepository.updateWishItem(updatedItem)
-            _wishItem.value = updatedItem
-            _isEditMode.value = false
-            _newImageUri.value = null
-            _saveSuccess.value = true
+            try {
+                apiService.updateWishItem(item.id, UpdateWishItemRequest(
+                    name = _editedName.value.trim(),
+                    price = newPrice,
+                    imageUrl = imageUrl
+                ))
+                val updatedItem = item.copy(
+                    name = _editedName.value.trim(),
+                    price = newPrice,
+                    imageUrl = imageUrl
+                )
+                _wishItem.value = updatedItem
+                _isEditMode.value = false
+                _newImageUri.value = null
+                _saveSuccess.value = true
+            } catch (_: Exception) { }
         }
     }
 
     fun deleteWishItem() {
         viewModelScope.launch {
             val item = _wishItem.value ?: return@launch
-            ImageUtils.deleteImage(getApplication(), item.imagePath)
-            wishItemRepository.deleteWishItem(item)
-            _deleteSuccess.value = true
+            try {
+                apiService.deleteWishItem(item.id)
+                _deleteSuccess.value = true
+            } catch (_: Exception) { }
         }
     }
 
@@ -162,14 +182,37 @@ class WishItemDetailViewModel(application: Application) : AndroidViewModel(appli
             val requiredPoints = FormatUtils.priceToPoints(item.price)
 
             if (currentPoints >= requiredPoints) {
-                val updatedWishItem = item.copy(
-                    isRedeemed = true,
-                    redeemedDate = LocalDateTime.now()
-                )
-                wishItemRepository.updateWishItem(updatedWishItem)
-                _wishItem.value = updatedWishItem
-                _saveSuccess.value = true
+                try {
+                    apiService.updateWishItem(item.id, UpdateWishItemRequest(
+                        isRedeemed = true,
+                        redeemedDate = java.time.LocalDate.now()
+                    ))
+                    _wishItem.value = item.copy(
+                        isRedeemed = true,
+                        redeemedDate = java.time.LocalDateTime.now()
+                    )
+                    _saveSuccess.value = true
+                } catch (_: Exception) { }
             }
+        }
+    }
+
+    private suspend fun uploadImage(uri: Uri): String? {
+        return try {
+            val context = getApplication<Application>()
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File.createTempFile("upload_", ".jpg", context.cacheDir)
+            FileOutputStream(tempFile).use { out -> inputStream.copyTo(out) }
+            inputStream.close()
+
+            val requestBody = tempFile.asRequestBody("image/jpeg".toMediaType())
+            val part = MultipartBody.Part.createFormData("file", tempFile.name, requestBody)
+            val response = apiService.uploadImage(part)
+            tempFile.delete()
+            response.url
+        } catch (e: Exception) {
+            Log.w("WishDetailVM", "Image upload failed", e)
+            null
         }
     }
 }
@@ -229,11 +272,9 @@ fun WishItemDetailScreen(
                 },
                 actions = {
                     if (!isEditMode && wishItem != null) {
-                        // Edit button
                         IconButton(onClick = { viewModel.enterEditMode() }) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit")
                         }
-                        // Delete button
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete")
                         }
@@ -247,7 +288,18 @@ fun WishItemDetailScreen(
                 if (isEditMode) editedPrice.toDoubleOrNull() ?: item.price else item.price
             )
             val canAfford = (totalPoints ?: 0.0) >= requiredPoints
-            val imageFile = ImageUtils.getImageFile(context, item.imagePath)
+
+            // Resolve image model: API URL needs full base URL
+            val imageModel: Any = if (newImageUri != null) {
+                newImageUri!!
+            } else {
+                val url = item.imageUrl
+                if (url != null && url.startsWith("/api/")) {
+                    "${BuildConfig.API_BASE_URL}$url"
+                } else {
+                    url ?: ""
+                }
+            }
 
             Column(
                 modifier = Modifier
@@ -268,9 +320,7 @@ fun WishItemDetailScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = rememberAsyncImagePainter(
-                            model = newImageUri ?: imageFile
-                        ),
+                        painter = rememberAsyncImagePainter(model = imageModel),
                         contentDescription = item.name,
                         modifier = Modifier
                             .fillMaxSize()
@@ -312,7 +362,6 @@ fun WishItemDetailScreen(
                         .padding(horizontal = 24.dp, vertical = 16.dp)
                 ) {
                     if (isEditMode) {
-                        // Editable fields
                         OutlinedTextField(
                             value = editedName,
                             onValueChange = { viewModel.updateName(it) },
@@ -337,7 +386,6 @@ fun WishItemDetailScreen(
                             }
                         )
                     } else {
-                        // Item name (view mode)
                         Text(
                             text = item.name,
                             style = MaterialTheme.typography.headlineMedium,
@@ -346,7 +394,6 @@ fun WishItemDetailScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Points required badge
                         PointsBadge(
                             points = requiredPoints,
                             canAfford = canAfford,
@@ -355,7 +402,6 @@ fun WishItemDetailScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Price info
                         Text(
                             text = "Price: ${FormatUtils.formatPrice(item.price)}",
                             style = MaterialTheme.typography.bodyLarge,
@@ -364,7 +410,6 @@ fun WishItemDetailScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Points status
                         Text(
                             text = "Your points: ${FormatUtils.formatPoints(totalPoints ?: 0.0)}",
                             style = MaterialTheme.typography.bodyMedium,
@@ -383,9 +428,7 @@ fun WishItemDetailScreen(
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    // Action buttons
                     if (isEditMode) {
-                        // Save button
                         Button(
                             onClick = { viewModel.saveChanges() },
                             modifier = Modifier
@@ -401,7 +444,6 @@ fun WishItemDetailScreen(
                             )
                         }
                     } else if (!item.isRedeemed) {
-                        // Redeem button
                         Button(
                             onClick = { viewModel.redeemWishItem() },
                             modifier = Modifier
@@ -432,7 +474,6 @@ fun WishItemDetailScreen(
                 }
             }
         } ?: run {
-            // Loading state
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -444,7 +485,6 @@ fun WishItemDetailScreen(
         }
     }
 
-    // Delete confirmation dialog
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },

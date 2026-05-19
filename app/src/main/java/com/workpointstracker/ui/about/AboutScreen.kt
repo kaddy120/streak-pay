@@ -16,7 +16,44 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.workpointstracker.domain.usecase.Badge
+
+private data class BadgeInfo(
+    val name: String,
+    val displayName: String,
+    val description: String,
+    val icon: String,
+    val isPermanent: Boolean = false
+)
+
+private val allBadges = listOf(
+    BadgeInfo("EARLY_BIRD", "Early Bird", "5+ early morning sessions in 7 days", "\uD83D\uDC26"),
+    BadgeInfo("NIGHT_OWL", "Night Owl", "5+ sessions after 8 PM in 7 days", "\uD83E\uDD89"),
+    BadgeInfo("WEEKEND_WARRIOR", "Weekend Warrior", "Worked 4+ consecutive weekends", "\u2694\uFE0F"),
+    BadgeInfo("MARATHON_RUNNER", "Marathon Runner", "Completed a 3+ hour session", "\uD83C\uDFC3"),
+    BadgeInfo("CENTURION", "Centurion", "100 total sessions completed", "\uD83D\uDCAF", isPermanent = true),
+    BadgeInfo("POINT_MASTER_100", "Point Collector", "Reached 100 points", "\u2B50", isPermanent = true),
+    BadgeInfo("POINT_MASTER_500", "Point Expert", "Reached 500 points", "\uD83C\uDF1F", isPermanent = true),
+    BadgeInfo("POINT_MASTER_1000", "Point Master", "Reached 1000 points", "\uD83C\uDF1F\uD83C\uDF1F", isPermanent = true),
+    BadgeInfo("WEEK_STREAK", "Week Streak", "7+ day streak", "\uD83D\uDD25"),
+    BadgeInfo("MONTH_STREAK", "Month Streak", "30+ day streak", "\uD83D\uDD25\uD83D\uDD25"),
+    BadgeInfo("CONSISTENT", "Consistent", "Same productive session type 5 days in a row", "\uD83D\uDCC5"),
+    BadgeInfo("DIVERSIFIED", "Diversified", "All 3 session types in one day", "\uD83C\uDFA8")
+)
+
+private val badgeGradients = mapOf(
+    "WEEK_STREAK" to listOf(Color(0xFFFF6B35), Color(0xFFD32F2F)),
+    "MONTH_STREAK" to listOf(Color(0xFFFF6B35), Color(0xFFD32F2F)),
+    "EARLY_BIRD" to listOf(Color(0xFFFF9A8B), Color(0xFF4FC3F7)),
+    "NIGHT_OWL" to listOf(Color(0xFF7C4DFF), Color(0xFF303F9F)),
+    "WEEKEND_WARRIOR" to listOf(Color(0xFFE53935), Color(0xFF8B0000)),
+    "MARATHON_RUNNER" to listOf(Color(0xFF00897B), Color(0xFF00E5FF)),
+    "CENTURION" to listOf(Color(0xFFFFD700), Color(0xFFFF8F00)),
+    "POINT_MASTER_100" to listOf(Color(0xFFFFEB3B), Color(0xFFFFD700)),
+    "POINT_MASTER_500" to listOf(Color(0xFFFFD700), Color(0xFFFF9800)),
+    "POINT_MASTER_1000" to listOf(Color(0xFFFFE082), Color(0xFFFF6F00)),
+    "CONSISTENT" to listOf(Color(0xFF66BB6A), Color(0xFF00C853)),
+    "DIVERSIFIED" to listOf(Color(0xFFFF6B6B), Color(0xFFFFE66D), Color(0xFF4ECDC4))
+)
 
 @Composable
 fun AboutScreen() {
@@ -109,7 +146,7 @@ fun AboutScreen() {
         Spacer(modifier = Modifier.height(12.dp))
 
         // Display all badges
-        Badge.entries.forEach { badge ->
+        allBadges.forEach { badge ->
             BadgeShowcaseCard(badge = badge)
             Spacer(modifier = Modifier.height(12.dp))
         }
@@ -119,8 +156,9 @@ fun AboutScreen() {
 }
 
 @Composable
-fun BadgeShowcaseCard(badge: Badge) {
-    val gradient = getBadgeGradient(badge)
+private fun BadgeShowcaseCard(badge: BadgeInfo) {
+    val colors = badgeGradients[badge.name] ?: listOf(Color(0xFF9E9E9E), Color(0xFF616161))
+    val gradient = Brush.horizontalGradient(colors)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -190,45 +228,6 @@ fun BadgeShowcaseCard(badge: Badge) {
                 )
             }
         }
-    }
-}
-
-// Badge gradient colors (same as HomeScreen)
-private fun getBadgeGradient(badge: Badge): Brush {
-    return when (badge) {
-        Badge.WEEK_STREAK, Badge.MONTH_STREAK -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFF6B35), Color(0xFFD32F2F))
-        )
-        Badge.EARLY_BIRD -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFF9A8B), Color(0xFF4FC3F7))
-        )
-        Badge.NIGHT_OWL -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFF7C4DFF), Color(0xFF303F9F))
-        )
-        Badge.WEEKEND_WARRIOR -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFE53935), Color(0xFF8B0000))
-        )
-        Badge.MARATHON_RUNNER -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFF00897B), Color(0xFF00E5FF))
-        )
-        Badge.CENTURION -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFFD700), Color(0xFFFF8F00))
-        )
-        Badge.POINT_MASTER_100 -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFFEB3B), Color(0xFFFFD700))
-        )
-        Badge.POINT_MASTER_500 -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFFD700), Color(0xFFFF9800))
-        )
-        Badge.POINT_MASTER_1000 -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFFE082), Color(0xFFFF6F00))
-        )
-        Badge.CONSISTENT -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFF66BB6A), Color(0xFF00C853))
-        )
-        Badge.DIVERSIFIED -> Brush.horizontalGradient(
-            colors = listOf(Color(0xFFFF6B6B), Color(0xFFFFE66D), Color(0xFF4ECDC4))
-        )
     }
 }
 

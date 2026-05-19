@@ -1,0 +1,206 @@
+:host {
+  display: block;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.history-header {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.page-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: var(--color-accent);
+  margin: 4px 0 0;
+}
+
+// ─── Glass Period Pills ──────────────────────────
+.period-selector {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  padding: 4px;
+  background: var(--color-surface);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 12px;
+  width: fit-content;
+}
+
+.period-btn {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: all 0.15s ease;
+
+  &.active {
+    background: var(--color-accent);
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
+  &:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text-primary);
+  }
+}
+
+// ─── Stats Card ──────────────────────────────────
+.stats-card, .streak-card {
+  margin-bottom: 16px;
+
+  &.skeleton {
+    animation: skeleton-pulse 1.5s infinite;
+  }
+}
+
+.card-title {
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 20px;
+}
+
+.progress-row {
+  margin-bottom: 20px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.progress-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.progress-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+// Custom gradient progress bars
+.day-job-bar ::ng-deep .mdc-linear-progress__bar-inner {
+  border-color: var(--color-day-job) !important;
+}
+
+.side-work-bar ::ng-deep .mdc-linear-progress__bar-inner {
+  border-color: var(--color-side-work) !important;
+}
+
+.period-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-surface-border);
+
+  .total-label {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+  }
+
+  .total-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+  }
+}
+
+// ─── Streak Card ─────────────────────────────────
+.streak-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.streak-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.streak-flame {
+  font-size: 32px;
+  color: var(--color-day-job);
+}
+
+.streak-number {
+  font-family: 'Bricolage Grotesque', 'DM Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-accent), #C084FC);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.streak-text {
+  font-size: 16px;
+  color: var(--color-text-secondary);
+}
+
+.bonus-badge {
+  font-family: 'JetBrains Mono', monospace;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.grace-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-surface-border);
+  font-size: 14px;
+  color: var(--color-text-secondary);
+
+  &.urgent {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.15);
+    color: var(--color-error);
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.2; }
+}
