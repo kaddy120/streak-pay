@@ -26,6 +26,13 @@ class WishItemController(
         return ResponseEntity.ok(items.map { it.toResponse() })
     }
 
+    @GetMapping("/{id}")
+    fun getWishItem(@PathVariable id: Long): ResponseEntity<WishItemResponse> {
+        val entity = wishItemRepository.findById(id)
+            .orElseThrow { NoSuchElementException("Wish item not found: $id") }
+        return ResponseEntity.ok(entity.toResponse())
+    }
+
     @PostMapping
     fun createWishItem(@RequestBody request: CreateWishItemRequest): ResponseEntity<WishItemResponse> {
         val entity = WishItemEntity(

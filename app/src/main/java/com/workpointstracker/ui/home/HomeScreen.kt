@@ -430,7 +430,7 @@ fun EncouragementCard(
                     // Spacer takes up remaining space
                     Spacer(modifier = Modifier.weight(1f))
                     // Grace period at the end
-                    if (streakInfo != null && streakInfo.gracePeriodHoursRemaining > 0) {
+                    if (streakInfo != null && (streakInfo.gracePeriodHoursRemaining > 0 || streakInfo.gracePeriodMinutesRemaining > 0)) {
                         Text(
                             text = "Grace: ${streakInfo.gracePeriodHoursRemaining}h ${streakInfo.gracePeriodMinutesRemaining}m",
                             style = MaterialTheme.typography.bodyMedium,

@@ -72,7 +72,7 @@ class StreakManager(private val settingsProvider: SettingsProvider) {
         val settings = settingsProvider.getAppSettingsOnce() ?: AppSettings()
         val validatedStreak = getValidatedStreak(settings)
         val gracePeriod = calculateGracePeriodStatus(settings)
-        val streakAtRisk = isStreakAtRisk(settings, gracePeriod)
+        val streakAtRisk = validatedStreak > 0 && isStreakAtRisk(settings, gracePeriod)
 
         return StreakInfo(
             currentStreak = validatedStreak,
@@ -114,11 +114,10 @@ class StreakManager(private val settingsProvider: SettingsProvider) {
         }
 
         val now = LocalDateTime.now()
-        val hoursSinceLastSession = ChronoUnit.HOURS.between(lastSessionEnd, now)
         val minutesSinceLastSession = ChronoUnit.MINUTES.between(lastSessionEnd, now)
 
-        val hoursRemaining = (GRACE_PERIOD_HOURS - hoursSinceLastSession).coerceAtLeast(0)
         val totalMinutesRemaining = (GRACE_PERIOD_HOURS * 60 - minutesSinceLastSession).coerceAtLeast(0)
+        val hoursRemaining = totalMinutesRemaining / 60
         val minutesRemaining = totalMinutesRemaining % 60
 
         return GracePeriodStatus(
@@ -144,8 +143,12 @@ class StreakManager(private val settingsProvider: SettingsProvider) {
 
     fun getMotivationalMessage(streakInfo: StreakInfo, badges: List<Badge>): String {
         return when {
-            streakInfo.streakAtRisk && streakInfo.gracePeriod.hoursRemaining > 0 -> {
-                "Only ${streakInfo.gracePeriod.hoursRemaining}h left to keep your ${streakInfo.currentStreak}-day streak!"
+            streakInfo.streakAtRisk && (streakInfo.gracePeriod.hoursRemaining > 0 || streakInfo.gracePeriod.minutesRemaining > 0) -> {
+                val timeStr = if (streakInfo.gracePeriod.hoursRemaining > 0)
+                    "${streakInfo.gracePeriod.hoursRemaining}h ${streakInfo.gracePeriod.minutesRemaining}m"
+                else
+                    "${streakInfo.gracePeriod.minutesRemaining}m"
+                "Only $timeStr left to keep your ${streakInfo.currentStreak}-day streak!"
             }
             streakInfo.streakAtRisk -> {
                 "Work today to keep your ${streakInfo.currentStreak}-day streak alive!"

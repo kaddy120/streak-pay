@@ -45,4 +45,10 @@ export class FormatService {
   formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
+
+  /** Local-time ISO-8601 string matching server's LocalDateTime format */
+  toLocalISO(d: Date = new Date()): string {
+    const p = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
 }

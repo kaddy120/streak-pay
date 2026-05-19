@@ -126,6 +126,26 @@
   width: 100%;
 }
 
+.image-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.upload-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-image-preview {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
 .edit-actions {
   display: flex;
   gap: 8px;

@@ -53,6 +53,8 @@ export class WishDetailComponent implements OnInit {
   editing = signal(false);
   editName = '';
   editPrice = 0;
+  editImageUrl = '';
+  editImagePreview = '';
   loading = signal(true);
 
   ngOnInit(): void {
@@ -64,6 +66,8 @@ export class WishDetailComponent implements OnInit {
           this.item.set(found);
           this.editName = found.name;
           this.editPrice = found.price;
+          this.editImageUrl = found.imageUrl ?? '';
+          this.editImagePreview = found.imageUrl ? this.api.getImageUrl(found.imageUrl) : '';
         }
         this.loading.set(false);
       },
@@ -91,6 +95,11 @@ export class WishDetailComponent implements OnInit {
   }
 
   startEdit(): void {
+    const i = this.item();
+    if (i) {
+      this.editImageUrl = i.imageUrl ?? '';
+      this.editImagePreview = i.imageUrl ? this.api.getImageUrl(i.imageUrl) : '';
+    }
     this.editing.set(true);
   }
 
@@ -99,14 +108,25 @@ export class WishDetailComponent implements OnInit {
     if (i) {
       this.editName = i.name;
       this.editPrice = i.price;
+      this.editImageUrl = i.imageUrl ?? '';
+      this.editImagePreview = i.imageUrl ? this.api.getImageUrl(i.imageUrl) : '';
     }
     this.editing.set(false);
+  }
+
+  onEditFileSelect(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    this.editImagePreview = URL.createObjectURL(file);
+    this.api.uploadImage(file).subscribe({
+      next: (res) => this.editImageUrl = res.url,
+    });
   }
 
   saveEdit(): void {
     const i = this.item();
     if (!i) return;
-    this.api.updateWishItem(i.id, { name: this.editName, price: this.editPrice }).subscribe({
+    this.api.updateWishItem(i.id, { name: this.editName, price: this.editPrice, imageUrl: this.editImageUrl || undefined }).subscribe({
       next: (updated) => {
         this.item.set(updated);
         this.editing.set(false);

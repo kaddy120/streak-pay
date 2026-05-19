@@ -45,10 +45,12 @@
 
         <!-- Stats -->
         <div class="stats-grid">
-          <div class="stat-item">
-            <span class="stat-label">Duration</span>
-            <span class="stat-value">{{ session()!.durationMinutes | formatDuration }}</span>
-          </div>
+          @if (!isActive()) {
+            <div class="stat-item">
+              <span class="stat-label">Duration</span>
+              <span class="stat-value">{{ session()!.durationMinutes | formatDuration }}</span>
+            </div>
+          }
           <div class="stat-item">
             <span class="stat-label">Points Earned</span>
             <span class="stat-value points" [style.color]="getSessionColor(session()!.type)">
@@ -69,26 +71,25 @@
 
         <!-- Actions -->
         <div class="action-buttons">
-          <button mat-flat-button (click)="save()" class="accent-btn">
-            <span class="material-symbols-rounded">save</span>
-            Save Changes
-          </button>
-          @if (isActive() && !session()!.isPaused) {
+          @if (isActive()) {
+            <button mat-flat-button (click)="saveAndResume()" class="accent-btn">
+              <span class="material-symbols-rounded">play_arrow</span>
+              Resume
+            </button>
             <button mat-stroked-button (click)="stopSession()" class="stop-btn">
               <span class="material-symbols-rounded">stop</span>
               Stop
             </button>
-          }
-          @if (session()!.isPaused) {
-            <button mat-stroked-button (click)="resumeSession()">
-              <span class="material-symbols-rounded">play_arrow</span>
-              Resume
+          } @else {
+            <button mat-flat-button (click)="save()" class="accent-btn">
+              <span class="material-symbols-rounded">save</span>
+              Save Changes
+            </button>
+            <button mat-stroked-button color="warn" (click)="deleteSession()">
+              <span class="material-symbols-rounded">delete</span>
+              Delete
             </button>
           }
-          <button mat-stroked-button color="warn" (click)="deleteSession()">
-            <span class="material-symbols-rounded">delete</span>
-            Delete
-          </button>
         </div>
       </mat-card-content>
     </mat-card>

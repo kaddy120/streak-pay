@@ -16,12 +16,13 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/images")
 class ImageController(
-    @Value("\${app.image-upload-dir:./uploads}") private val uploadDir: String
+    @Value("\${app.image-upload-dir:./uploads}") uploadDir: String
 ) {
+    private val uploadPath: Path = Paths.get(uploadDir).toAbsolutePath()
     private val allowedTypes = setOf("image/jpeg", "image/png", "image/webp", "image/gif")
 
     init {
-        Files.createDirectories(Paths.get(uploadDir))
+        Files.createDirectories(uploadPath)
     }
 
     @PostMapping
@@ -45,7 +46,7 @@ class ImageController(
             else -> "bin"
         }
         val filename = "${UUID.randomUUID()}.$extension"
-        val targetPath = Paths.get(uploadDir).resolve(filename)
+        val targetPath = uploadPath.resolve(filename)
         file.transferTo(targetPath.toFile())
 
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -54,7 +55,7 @@ class ImageController(
 
     @GetMapping("/{filename}")
     fun getImage(@PathVariable filename: String): ResponseEntity<Resource> {
-        val filePath: Path = Paths.get(uploadDir).resolve(filename)
+        val filePath: Path = uploadPath.resolve(filename)
         if (!Files.exists(filePath)) {
             return ResponseEntity.notFound().build()
         }

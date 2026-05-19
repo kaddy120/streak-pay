@@ -108,23 +108,20 @@ export class SessionDetailComponent implements OnInit {
   stopSession(): void {
     const s = this.session();
     if (!s) return;
-    this.api.updateSession(s.id, { endTime: new Date().toISOString().replace('Z', '') }).subscribe({
-      next: (updated) => {
-        this.session.set(updated);
-        this.syncEditFields(updated);
+    this.api.updateSession(s.id, { endTime: this.fmt.toLocalISO() }).subscribe({
+      next: () => {
         this.snackBar.open('Session stopped', 'OK', { duration: 2000 });
+        this.router.navigate(['/dashboard']);
       },
     });
   }
 
-  resumeSession(): void {
+  saveAndResume(): void {
     const s = this.session();
     if (!s) return;
-    this.api.updateSession(s.id, { isPaused: false, endTime: undefined }).subscribe({
-      next: (updated) => {
-        this.session.set(updated);
-        this.snackBar.open('Session resumed', 'OK', { duration: 2000 });
-      },
+    const startTime = `${this.editStartDate}T${this.editStartTime}:00`;
+    this.api.updateSession(s.id, { startTime, isPaused: false }).subscribe({
+      next: () => this.router.navigate(['/dashboard']),
     });
   }
 

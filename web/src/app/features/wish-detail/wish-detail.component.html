@@ -48,6 +48,16 @@
           <mat-label>Price (ZAR)</mat-label>
           <input matInput type="number" [(ngModel)]="editPrice" min="0">
         </mat-form-field>
+        <div class="image-upload">
+          <input type="file" accept="image/*" (change)="onEditFileSelect($event)" #editFileInput hidden>
+          <button mat-stroked-button (click)="editFileInput.click()" class="upload-btn">
+            <span class="material-symbols-rounded">upload</span>
+            {{ editImageUrl ? 'Change Image' : 'Add Image' }}
+          </button>
+          @if (editImagePreview) {
+            <img [src]="editImagePreview" class="edit-image-preview" alt="preview">
+          }
+        </div>
         <div class="edit-actions">
           <button mat-flat-button (click)="saveEdit()" class="accent-btn">Save</button>
         </div>

@@ -59,8 +59,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   currentSessionId = signal<number | null>(null);
 
   // Computed
-  canStop = computed(() => this.timer.elapsed() >= 900); // 15 min
-
   wishProgress = computed(() => {
     const wish = this.nextWishItem();
     if (!wish) return 0;
@@ -164,6 +162,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
             const idx = list.findIndex(s => s.id === session.id);
             return idx >= 0 ? list.map(s => s.id === session.id ? session : s) : [...list, session];
           });
+          // Sync local timer when this web session is updated remotely
+          if (this.currentSessionId() === session.id) {
+            this.timer.syncElapsed(session.activeElapsedSeconds);
+            if (session.isPaused && !this.timer.paused()) {
+              this.timer.pause();
+            } else if (!session.isPaused && this.timer.paused()) {
+              this.timer.resume();
+            }
+          }
         }
       }),
       this.sse.sessionDeleted$.subscribe(id => {
@@ -179,7 +186,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // Timer actions
   startSession(): void {
-    const now = new Date().toISOString().replace('Z', '');
+    const now = this.fmt.toLocalISO();
     this.api.createSession({
       deviceId: 'web',
       startTime: now,
@@ -195,7 +202,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   pauseSession(): void {
     const id = this.currentSessionId();
     if (!id) return;
-    this.api.updateSession(id, { isPaused: true, pausedAt: new Date().toISOString().replace('Z', '') }).subscribe({
+    this.api.updateSession(id, { isPaused: true, pausedAt: this.fmt.toLocalISO() }).subscribe({
       next: () => this.timer.pause(),
     });
   }
@@ -211,13 +218,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
   stopSession(): void {
     const id = this.currentSessionId();
     if (!id) return;
-    this.api.updateSession(id, { endTime: new Date().toISOString().replace('Z', '') }).subscribe({
-      next: () => {
-        this.timer.stop();
-        this.currentSessionId.set(null);
-        this.loadDashboard();
-      },
-    });
+    const elapsed = this.timer.elapsed();
+    this.timer.stop();
+    this.currentSessionId.set(null);
+    if (elapsed < 900) {
+      // Under 15 min — discard: delete from API and remove from local lists
+      this.api.deleteSession(id).subscribe({
+        next: () => {
+          this.activeSessions.update(list => list.filter(s => s.id !== id));
+          this.recentSessions.update(list => list.filter(s => s.id !== id));
+        },
+      });
+    } else {
+      this.api.updateSession(id, { endTime: this.fmt.toLocalISO() }).subscribe({
+        next: () => this.loadDashboard(),
+      });
+    }
   }
 
   // Remote session control
